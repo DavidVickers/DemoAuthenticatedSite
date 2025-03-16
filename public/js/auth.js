@@ -61,14 +61,11 @@ async function login() {
             timestamp: Date.now()
         };
 
-        // Start the authorization flow
-        const authUrl = oktaAuth.getAuthorizationUrl({
+        // Start the authorization flow using signInWithRedirect
+        await oktaAuth.signInWithRedirect({
             responseType: ['code'],
             state: encodeURIComponent(JSON.stringify(state))
         });
-
-        // Redirect to Okta
-        window.location.assign(authUrl);
 
     } catch (error) {
         console.error('Login error:', error);
