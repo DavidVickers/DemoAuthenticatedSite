@@ -56,16 +56,20 @@ async function login() {
         updateUI(false, null, 'Initiating login...');
 
         // Create state with chat session info
-        const state = {
-            chatSessionId: generateSessionId(),
-            timestamp: Date.now()
-        };
+        const state = generateSessionId();
 
-        // Start the authorization flow using signInWithRedirect
-        await oktaAuth.signInWithRedirect({
-            responseType: ['code'],
-            state: encodeURIComponent(JSON.stringify(state))
-        });
+        // Construct the authorization URL directly
+        const authUrl = new URL(`${oktaAuth.options.issuer}/oauth2/v1/authorize`);
+        authUrl.searchParams.append('client_id', oktaAuth.options.clientId);
+        authUrl.searchParams.append('response_type', 'code');
+        authUrl.searchParams.append('scope', 'openid profile email');
+        authUrl.searchParams.append('redirect_uri', window.location.origin + '/callback');
+        authUrl.searchParams.append('state', state);
+
+        console.log('Redirecting to:', authUrl.toString());
+        
+        // Redirect to Okta
+        window.location.assign(authUrl.toString());
 
     } catch (error) {
         console.error('Login error:', error);
