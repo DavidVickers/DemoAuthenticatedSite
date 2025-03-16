@@ -8,7 +8,13 @@ const app = express();
 require('dotenv').config();
 
 const PORT = process.env.PORT || 3000;
-const CALLBACK_URL = process.env.CALLBACK_URL || 'http://localhost:3000/callback';
+const CALLBACK_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://vickers-demo-site.herokuapp.com/callback'
+  : 'http://localhost:3000/callback';
+
+// Log the environment and callback URL on startup
+console.log('Environment:', process.env.NODE_ENV);
+console.log('Using callback URL:', CALLBACK_URL);
 
 // Configure session middleware FIRST
 app.use(session({
@@ -44,7 +50,8 @@ app.get('/callback', async (req, res) => {
     code: req.query.code ? 'present' : 'missing',
     state: req.query.state,
     host: req.get('host'),
-    protocol: req.protocol
+    protocol: req.protocol,
+    env: process.env.NODE_ENV
   });
 
   const code = req.query.code;
