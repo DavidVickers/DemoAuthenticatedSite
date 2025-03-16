@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const fetch = require('node-fetch');
+const crypto = require('crypto');
 const app = express();
 require('dotenv').config();
 
@@ -22,7 +23,7 @@ app.get('/config', (req, res) => {
     });
 });
 
-// Handle the token exchange at callback
+// IMPORTANT: Place the callback route BEFORE the catch-all route
 app.get('/callback', async (req, res) => {
     const code = req.query.code;
     if (!code) {
@@ -50,7 +51,8 @@ app.get('/callback', async (req, res) => {
         const tokenResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/token`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'application/json'
             },
             body: new URLSearchParams({
                 grant_type: 'authorization_code',
@@ -62,6 +64,7 @@ app.get('/callback', async (req, res) => {
         });
 
         const tokens = await tokenResponse.json();
+        console.log('Token exchange response:', tokens);
 
         if (!tokenResponse.ok) {
             throw new Error(tokens.error_description || tokens.error || 'Token exchange failed');
@@ -75,18 +78,18 @@ app.get('/callback', async (req, res) => {
         });
 
         const userInfo = await userInfoResponse.json();
+        console.log('User info retrieved:', userInfo);
 
-        // Store tokens in session or cookie (you might want to add session middleware)
-        // For now, we'll just redirect with success
-        res.redirect('/?login=success');
+        // Redirect to main page with success
+        return res.redirect('/?login=success');
 
     } catch (error) {
         console.error('Token exchange failed:', error);
-        res.redirect('/?error=' + encodeURIComponent(error.message));
+        return res.redirect('/?error=' + encodeURIComponent(error.message));
     }
 });
 
-// Serve index.html for the root route
+// Serve index.html for the root route - This should come AFTER other routes
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
