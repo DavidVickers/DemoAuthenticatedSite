@@ -1,0 +1,16 @@
+{
+  "name": "sf-messaging-okta-demo",
+  "version": "1.0.0",
+  "description": "Salesforce Messaging with Okta Authentication Demo",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "dotenv": "^10.0.0"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+} 

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo Site - Chat with Us</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://global.oktacdn.com/okta-auth-js/7.2.0/okta-auth-js.min.js"></script>
+    <script src="https://service.force.com/embeddedservice/5.0/esw.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/8.0.20/jsrsasign-all-min.js"></script>
+</head>
+<body>
+    <header>
+        <h1>Welcome to Our Demo Site</h1>
+        <div id="user-info">
+            <span id="username"></span>
+            <button id="login-button" onclick="login()">Login</button>
+            <button id="logout-button" onclick="logout()" style="display: none;">Logout</button>
+        </div>
+    </header>
+
+    <main>
+        <div class="content">
+            <h2>Demo Content</h2>
+            <p>This is a demo site showcasing Salesforce Messaging integration with Okta authentication.</p>
+        </div>
+        
+        <div id="chat-container">
+            <!-- Salesforce Chat will be embedded here -->
+        </div>
+    </main>
+
+    <script src="js/auth.js"></script>
+    <script src="js/chat.js"></script>
+</body>
+</html> 
