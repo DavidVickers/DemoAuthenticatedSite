@@ -34,37 +34,45 @@ async function login() {
     const configResponse = await fetch('/config');
     const config = await configResponse.json();
     
-    if (!config.oktaIssuer || !config.clientId) {
-      throw new Error('Missing Okta configuration');
+    // Add debug logging
+    console.log('Received config:', {
+      issuer: config.oktaIssuer,
+      clientId: config.clientId,
+      callbackUrl: config.callbackUrl
+    });
+    
+    if (!config.oktaIssuer || !config.clientId || !config.callbackUrl) {
+      throw new Error('Missing required configuration');
     }
 
-    // Generate a state value (optionally store this in session for later verification)
+    // Generate state
     const state = generateSessionId();
 
-    // Derive the base domain from the Okta issuer URL (e.g., remove '/oauth2/default')
+    // Get base domain from issuer URL
     const oktaDomain = config.oktaIssuer.replace('/oauth2/default', '');
+    console.log('Using Okta domain:', oktaDomain);
     
-    // Construct the authorization endpoint URL
+    // Construct authorization URL
     const authUrl = new URL(`${oktaDomain}/oauth2/v1/authorize`);
     
-    // Set required query parameters for OpenID Connect
     const params = {
       client_id: config.clientId,
       response_type: 'code',
       scope: 'openid profile email',
-      redirect_uri: config.callbackUrl,  // Use the callbackUrl from the config endpoint
+      redirect_uri: config.callbackUrl,
       state: state
     };
 
-    // Append each parameter to the URL
+    // Log the parameters
+    console.log('Auth parameters:', params);
+
     Object.entries(params).forEach(([key, value]) => {
       authUrl.searchParams.append(key, value);
     });
 
     const finalUrl = authUrl.toString();
-    console.log('Redirecting to:', finalUrl);
+    console.log('Final redirect URL:', finalUrl);
 
-    // Redirect the browser to the Okta authorization URL
     window.location.assign(finalUrl);
   } catch (error) {
     console.error('Login error:', error);
