@@ -52,7 +52,7 @@ async function login() {
       client_id: config.clientId,
       response_type: 'code',
       scope: 'openid profile email',
-      redirect_uri: 'https://vickers-demo-site.herokuapp.com/callback',
+      redirect_uri: 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback',
       state: state
     };
 
