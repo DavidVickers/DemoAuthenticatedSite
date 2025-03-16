@@ -8,20 +8,15 @@ const app = express();
 require('dotenv').config();
 
 const PORT = process.env.PORT || 3000;
-const CALLBACK_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://vickers-demo-site.herokuapp.com/callback'
-  : 'http://localhost:3000/callback';
-
-// Log the environment and callback URL on startup
-console.log('Environment:', process.env.NODE_ENV);
-console.log('Using callback URL:', CALLBACK_URL);
+// Use an environment variable for the callback URL, with a fallback.
+const CALLBACK_URL = process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback';
 
 // Configure session middleware FIRST
 app.use(session({
   secret: crypto.randomBytes(32).toString('hex'),
   resave: false,
   saveUninitialized: false,
-  // Use secure: true in production; set to false if testing locally over HTTP.
+  // For production HTTPS, secure should be true. For local testing, set it to false.
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
@@ -45,15 +40,6 @@ app.use((req, res, next) => {
 // ------------------------
 // This must come BEFORE static middleware.
 app.get('/callback', async (req, res) => {
-  console.log('Callback received at:', CALLBACK_URL);
-  console.log('Request details:', {
-    code: req.query.code ? 'present' : 'missing',
-    state: req.query.state,
-    host: req.get('host'),
-    protocol: req.protocol,
-    env: process.env.NODE_ENV
-  });
-
   const code = req.query.code;
   if (!code) {
     console.error('No authorization code returned');
@@ -61,15 +47,15 @@ app.get('/callback', async (req, res) => {
   }
 
   try {
-    console.log('Starting token exchange with Okta...');
+    console.log('Received authorization code, starting token exchange');
 
-    // Create a JWT for client authentication
+    // Create a JWT for client authentication (client assertion)
     const clientAssertion = jwt.sign({
       iss: process.env.OKTA_CLIENT_ID,
       sub: process.env.OKTA_CLIENT_ID,
       aud: `${process.env.OKTA_ISSUER_URL}/v1/token`,
       iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 300,
+      exp: Math.floor(Date.now() / 1000) + 300, // expires in 5 minutes
       jti: crypto.randomUUID()
     }, process.env.PRIVATE_KEY, {
       algorithm: 'RS256',
@@ -86,22 +72,21 @@ app.get('/callback', async (req, res) => {
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code: code,
-        redirect_uri: CALLBACK_URL,
+        redirect_uri: CALLBACK_URL,  // Use our updated callback URL
         client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
         client_assertion: clientAssertion
       })
     });
 
-    console.log('Token response status:', tokenResponse.status);
     const tokens = await tokenResponse.json();
-    console.log('Token response headers:', tokenResponse.headers);
+    console.log('Token exchange response:', tokens);
 
     if (!tokenResponse.ok) {
       console.error('Token exchange error:', tokens);
       throw new Error(tokens.error_description || tokens.error || 'Token exchange failed');
     }
 
-    // Retrieve user info
+    // Retrieve user info using the access token
     const userInfoResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/userinfo`, {
       headers: {
         'Authorization': `Bearer ${tokens.access_token}`
@@ -127,11 +112,7 @@ app.get('/callback', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Token exchange error details:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    });
+    console.error('Token exchange failed:', error);
     res.redirect('/?error=' + encodeURIComponent(error.message));
   }
 });
@@ -143,8 +124,8 @@ app.get('/config', (req, res) => {
   res.json({
     oktaIssuer: process.env.OKTA_ISSUER_URL,
     clientId: process.env.OKTA_CLIENT_ID,
-    callbackUrl: CALLBACK_URL,
-    isAuthenticated: req.session.isAuthenticated || false
+    isAuthenticated: req.session.isAuthenticated || false,
+    callbackUrl: CALLBACK_URL
   });
 });
 

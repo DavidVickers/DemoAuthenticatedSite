@@ -1,7 +1,7 @@
 // Note: The JWT signing library is included in index.html:
 // <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/8.0.20/jsrsasign-all-min.js"></script>
 
-let oktaAuth; // Currently not used. Remove if unnecessary.
+let oktaAuth; // Currently not used; remove if not needed.
 
 // Initialize authentication status when the page loads
 async function initializeAuth() {
@@ -34,8 +34,8 @@ async function login() {
     const configResponse = await fetch('/config');
     const config = await configResponse.json();
     
-    if (!config.oktaIssuer || !config.clientId || !config.callbackUrl) {
-      throw new Error('Missing required configuration');
+    if (!config.oktaIssuer || !config.clientId) {
+      throw new Error('Missing Okta configuration');
     }
 
     // Generate a state value (optionally store this in session for later verification)
@@ -52,7 +52,7 @@ async function login() {
       client_id: config.clientId,
       response_type: 'code',
       scope: 'openid profile email',
-      redirect_uri: config.callbackUrl,
+      redirect_uri: config.callbackUrl,  // Use the callbackUrl from the config endpoint
       state: state
     };
 
