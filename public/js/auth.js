@@ -30,11 +30,15 @@ async function login() {
     console.log('Starting login process...');
     updateUI(false, null, 'Initiating login...');
 
+    // First check if cookies are enabled
+    if (!navigator.cookieEnabled) {
+      throw new Error('Cookies must be enabled to login');
+    }
+
     // Fetch configuration from your server
     const configResponse = await fetch('/config');
     const config = await configResponse.json();
     
-    // Log the config we received
     console.log('Config received:', {
       issuer: config.oktaIssuer,
       clientId: config.clientId,
@@ -45,38 +49,29 @@ async function login() {
       throw new Error('Missing Okta configuration');
     }
 
-    // Generate a state value (optionally store this in session for later verification)
-    const state = generateSessionId();
-
     // Construct the authorization endpoint URL using the full issuer URL
-    // This ensures we use the same authorization server as for token exchange.
     const authUrl = new URL(`${config.oktaIssuer}/v1/authorize`);
     
-    // Set required query parameters for OpenID Connect
+    const state = generateSessionId();
     const params = {
       client_id: config.clientId,
       response_type: 'code',
       scope: 'openid profile email',
-      redirect_uri: config.callbackUrl,  // Uses the callbackUrl from the config endpoint
-      state: state
+      redirect_uri: config.callbackUrl,
+      state: state,
+      prompt: 'login'  // Force fresh login
     };
 
-    // Log the parameters being added
-    console.log('Auth parameters:', params);
-
-    // Append each parameter to the URL
     Object.entries(params).forEach(([key, value]) => {
       authUrl.searchParams.append(key, value);
     });
 
     const finalUrl = authUrl.toString();
-    console.log('Generated authorization URL:', finalUrl);
-    console.log('URL components:', {
-      base: authUrl.origin + authUrl.pathname,
-      parameters: Object.fromEntries(authUrl.searchParams.entries())
-    });
+    console.log('Redirecting to:', finalUrl);
 
-    // Redirect the browser to the Okta authorization URL
+    // Set a cookie to verify they work
+    document.cookie = "okta_test=1; path=/; secure; samesite=lax";
+
     window.location.assign(finalUrl);
   } catch (error) {
     console.error('Login error:', error);

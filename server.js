@@ -15,14 +15,25 @@ const CALLBACK_URL = process.env.CALLBACK_URL || 'https://vickers-demo-site-d333
 app.use(session({
   secret: crypto.randomBytes(32).toString('hex'),
   resave: false,
-  saveUninitialized: false,
+  saveUninitialized: true,
   // For production HTTPS, secure should be true. For local testing, set it to false.
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    sameSite: 'lax'  // Added to help with cross-site cookie issues
   }
 }));
+
+// Add cookie check middleware
+app.use((req, res, next) => {
+  console.log('Cookie check:', {
+    cookies: req.cookies,
+    sessionID: req.sessionID,
+    hasSession: !!req.session
+  });
+  next();
+});
 
 // Body parsers for JSON and URL-encoded data
 app.use(express.json());
