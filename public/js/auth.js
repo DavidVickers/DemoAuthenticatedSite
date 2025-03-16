@@ -34,6 +34,13 @@ async function login() {
     const configResponse = await fetch('/config');
     const config = await configResponse.json();
     
+    // Log the config we received
+    console.log('Config received:', {
+      issuer: config.oktaIssuer,
+      clientId: config.clientId,
+      callbackUrl: config.callbackUrl
+    });
+
     if (!config.oktaIssuer || !config.clientId) {
       throw new Error('Missing Okta configuration');
     }
@@ -54,13 +61,20 @@ async function login() {
       state: state
     };
 
+    // Log the parameters being added
+    console.log('Auth parameters:', params);
+
     // Append each parameter to the URL
     Object.entries(params).forEach(([key, value]) => {
       authUrl.searchParams.append(key, value);
     });
 
     const finalUrl = authUrl.toString();
-    console.log('Redirecting to:', finalUrl);
+    console.log('Generated authorization URL:', finalUrl);
+    console.log('URL components:', {
+      base: authUrl.origin + authUrl.pathname,
+      parameters: Object.fromEntries(authUrl.searchParams.entries())
+    });
 
     // Redirect the browser to the Okta authorization URL
     window.location.assign(finalUrl);
