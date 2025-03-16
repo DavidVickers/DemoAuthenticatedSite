@@ -40,100 +40,122 @@ app.use((req, res, next) => {
 // ------------------------
 // This must come BEFORE static middleware.
 app.get('/callback', async (req, res) => {
-    console.log('=== /callback route hit ===');
-    console.log('Query parameters:', req.query);
-  
-    const code = req.query.code;
-    if (!code) {
-      console.error('No authorization code returned.');
-      return res.redirect('/?error=' + encodeURIComponent('No authorization code returned'));
+  console.log('=== /callback route hit ===');
+  console.log('Query parameters:', req.query);
+  console.log('Headers:', req.headers);
+  console.log('Session:', req.session);
+
+  const code = req.query.code;
+  if (!code) {
+    console.error('No authorization code returned.');
+    return res.redirect('/?error=' + encodeURIComponent('No authorization code returned'));
+  }
+  console.log('Authorization code received:', code);
+
+  try {
+    // Build JWT payload for client assertion
+    const now = Math.floor(Date.now() / 1000);
+    const jwtPayload = {
+      iss: process.env.OKTA_CLIENT_ID,
+      sub: process.env.OKTA_CLIENT_ID,
+      aud: `${process.env.OKTA_ISSUER_URL}/v1/token`,
+      iat: now,
+      exp: now + 300, // Token valid for 5 minutes
+      jti: crypto.randomUUID()
+    };
+    console.log('JWT payload:', jwtPayload);
+
+    // Sign the JWT using your private key
+    const clientAssertion = jwt.sign(jwtPayload, process.env.PRIVATE_KEY, {
+      algorithm: 'RS256',
+      header: { alg: 'RS256', typ: 'JWT' }
+    });
+    console.log('Generated client assertion JWT:', clientAssertion);
+
+    // Build the token request body
+    const bodyParams = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: code,
+      redirect_uri: process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback',
+      client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      client_assertion: clientAssertion
+    });
+    console.log('Token request body:', bodyParams.toString());
+
+    // Define the token endpoint URL
+    const tokenUrl = `${process.env.OKTA_ISSUER_URL}/v1/token`;
+    console.log('Token endpoint URL:', tokenUrl);
+
+    // Add more logging for the token exchange
+    console.log('Token exchange request:', {
+      url: tokenUrl,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: bodyParams.toString()
+    });
+
+    // Make the token exchange request
+    console.log('Making POST request to token endpoint...');
+    const tokenResponse = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: bodyParams
+    });
+    console.log('Token response status:', tokenResponse.status);
+
+    // Log full response details
+    const tokens = await tokenResponse.json();
+    console.log('Token response:', {
+      status: tokenResponse.status,
+      headers: Object.fromEntries(tokenResponse.headers),
+      body: tokens
+    });
+
+    if (!tokenResponse.ok) {
+      console.error('Token exchange error:', tokens);
+      throw new Error(tokens.error_description || tokens.error || 'Token exchange failed');
     }
-    console.log('Authorization code received:', code);
-  
-    try {
-      // Build JWT payload for client assertion
-      const now = Math.floor(Date.now() / 1000);
-      const jwtPayload = {
-        iss: process.env.OKTA_CLIENT_ID,
-        sub: process.env.OKTA_CLIENT_ID,
-        aud: `${process.env.OKTA_ISSUER_URL}/v1/token`,
-        iat: now,
-        exp: now + 300, // Token valid for 5 minutes
-        jti: crypto.randomUUID()
-      };
-      console.log('JWT payload:', jwtPayload);
-  
-      // Sign the JWT using your private key
-      const clientAssertion = jwt.sign(jwtPayload, process.env.PRIVATE_KEY, {
-        algorithm: 'RS256',
-        header: { alg: 'RS256', typ: 'JWT' }
-      });
-      console.log('Generated client assertion JWT:', clientAssertion);
-  
-      // Build the token request body
-      const bodyParams = new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: code,
-        redirect_uri: process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback',
-        client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-        client_assertion: clientAssertion
-      });
-      console.log('Token request body:', bodyParams.toString());
-  
-      // Define the token endpoint URL
-      const tokenUrl = `${process.env.OKTA_ISSUER_URL}/v1/token`;
-      console.log('Token endpoint URL:', tokenUrl);
-  
-      // Make the token exchange request
-      console.log('Making POST request to token endpoint...');
-      const tokenResponse = await fetch(tokenUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json'
-        },
-        body: bodyParams
-      });
-      console.log('Token response status:', tokenResponse.status);
-  
-      const tokens = await tokenResponse.json();
-      console.log('Token response data:', tokens);
-  
-      if (!tokenResponse.ok) {
-        console.error('Token exchange error:', tokens);
-        throw new Error(tokens.error_description || tokens.error || 'Token exchange failed');
+
+    // Retrieve user info using the access token
+    console.log('Attempting to fetch user info with access token...');
+    const userInfoResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/userinfo`, {
+      headers: { 'Authorization': `Bearer ${tokens.access_token}` }
+    });
+    console.log('User info response status:', userInfoResponse.status);
+
+    const userInfo = await userInfoResponse.json();
+    console.log('User info retrieved:', userInfo);
+
+    // Store tokens and user info in session
+    req.session.isAuthenticated = true;
+    req.session.tokens = tokens;
+    req.session.user = userInfo;
+
+    console.log('Saving session with tokens and user info...');
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err);
+        return res.redirect('/?error=' + encodeURIComponent('Session save failed'));
       }
-  
-      // Retrieve user info using the access token
-      console.log('Attempting to fetch user info with access token...');
-      const userInfoResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/userinfo`, {
-        headers: { 'Authorization': `Bearer ${tokens.access_token}` }
-      });
-      console.log('User info response status:', userInfoResponse.status);
-  
-      const userInfo = await userInfoResponse.json();
-      console.log('User info retrieved:', userInfo);
-  
-      // Store tokens and user info in session
-      req.session.isAuthenticated = true;
-      req.session.tokens = tokens;
-      req.session.user = userInfo;
-  
-      console.log('Saving session with tokens and user info...');
-      req.session.save((err) => {
-        if (err) {
-          console.error('Session save error:', err);
-          return res.redirect('/?error=' + encodeURIComponent('Session save failed'));
-        }
-        console.log('Session saved successfully, redirecting to home page.');
-        res.redirect('/');
-      });
-  
-    } catch (error) {
-      console.error('Error during token exchange in /callback:', error);
-      res.redirect('/?error=' + encodeURIComponent(error.message));
-    }
-  });
+      console.log('Session saved successfully, redirecting to home page.');
+      res.redirect('/');
+    });
+
+  } catch (error) {
+    console.error('Detailed error in /callback:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    res.redirect('/?error=' + encodeURIComponent(error.message));
+  }
+});
 
 // ------------------------
 // API Routes and other endpoints
@@ -173,4 +195,10 @@ app.get('/', (req, res) => {
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+  console.log('App Configuration:', {
+    issuer: process.env.OKTA_ISSUER_URL,
+    clientId: process.env.OKTA_CLIENT_ID,
+    callbackUrl: CALLBACK_URL,
+    environment: process.env.NODE_ENV
+  });
 });
