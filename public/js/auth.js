@@ -27,11 +27,16 @@ async function initializeAuth() {
         const error = urlParams.get('error');
 
         if (loginSuccess === 'success') {
+            console.log('Login successful');
             updateUI(true);
             initializeChat();
+            // Clean up the URL
+            window.history.replaceState({}, document.title, '/');
         } else if (error) {
             console.error('Login error:', error);
             updateUI(false, null, decodeURIComponent(error));
+            // Clean up the URL
+            window.history.replaceState({}, document.title, '/');
         } else {
             checkAuth();
         }

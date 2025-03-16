@@ -26,7 +26,7 @@ app.get('/config', (req, res) => {
 app.get('/callback', async (req, res) => {
     const code = req.query.code;
     if (!code) {
-        return res.status(400).send('No authorization code returned');
+        return res.redirect('/?error=' + encodeURIComponent('No authorization code returned'));
     }
 
     try {
@@ -46,21 +46,19 @@ app.get('/callback', async (req, res) => {
             }
         });
 
-        // Prepare token exchange parameters
-        const params = new URLSearchParams();
-        params.append('grant_type', 'authorization_code');
-        params.append('code', code);
-        params.append('redirect_uri', `${req.protocol}://${req.get('host')}/callback`);
-        params.append('client_assertion_type', 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer');
-        params.append('client_assertion', clientAssertion);
-
         // Exchange code for tokens
         const tokenResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/token`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
             },
-            body: params
+            body: new URLSearchParams({
+                grant_type: 'authorization_code',
+                code: code,
+                redirect_uri: 'https://vickers-demo-site.herokuapp.com/callback',
+                client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+                client_assertion: clientAssertion
+            })
         });
 
         const tokens = await tokenResponse.json();
@@ -69,7 +67,7 @@ app.get('/callback', async (req, res) => {
             throw new Error(tokens.error_description || tokens.error || 'Token exchange failed');
         }
 
-        // Get user info using the access token
+        // Get user info
         const userInfoResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/userinfo`, {
             headers: {
                 'Authorization': `Bearer ${tokens.access_token}`
@@ -78,7 +76,8 @@ app.get('/callback', async (req, res) => {
 
         const userInfo = await userInfoResponse.json();
 
-        // Redirect to the main page with success
+        // Store tokens in session or cookie (you might want to add session middleware)
+        // For now, we'll just redirect with success
         res.redirect('/?login=success');
 
     } catch (error) {
