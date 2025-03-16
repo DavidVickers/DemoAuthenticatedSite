@@ -3,63 +3,7 @@
 
 let oktaAuth;
 let privateKey;
-
-// Initialize Okta Auth after fetching configuration
-async function initializeAuth() {
-    try {
-        const response = await fetch('/config');
-        const config = await response.json();
-        
-        console.log('Config loaded:', {
-            issuer: config.oktaIssuer,
-            clientId: config.oktaClientId,
-            hasPrivateKey: !!config.privateKey
-        });
-        
-        // Format the private key by ensuring proper line breaks
-        privateKey = config.privateKey
-            .replace(/\\n/g, '\n')
-            .replace(/"/g, '')
-            .trim();
-            
-        console.log('Private key formatted:', privateKey.slice(0, 50) + '...');
-        
-        oktaAuth = new OktaAuth({
-            issuer: config.oktaIssuer,
-            clientId: config.oktaClientId,
-            redirectUri: window.location.origin + '/callback',
-            scopes: ['openid', 'profile', 'email'],
-            tokenManager: {
-                storage: 'localStorage'
-            },
-            pkce: false,
-            responseType: ['code'],
-            clientAssertionType: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-            clientAssertion: createSignedJWT(config.oktaClientId)
-        });
-
-        // Wait for oktaAuth to be properly initialized
-        await oktaAuth.start();
-
-        // Add status indicator to the page
-        const header = document.querySelector('header');
-        const statusDiv = document.createElement('div');
-        statusDiv.id = 'auth-status';
-        statusDiv.style.padding = '10px';
-        header.appendChild(statusDiv);
-
-        // Check auth state after initialization
-        if (window.location.pathname !== '/callback') {
-            checkAuth();
-        }
-    } catch (error) {
-        console.error('Failed to initialize auth:', error);
-        updateUI(false, null, error.message);
-    }
-}
-
-// Initialize auth when the page loads
-initializeAuth();
+let issuerUrl; // Add this to store the issuer URL
 
 // Function to create a signed JWT assertion
 function createSignedJWT(clientId) {
@@ -72,7 +16,8 @@ function createSignedJWT(clientId) {
     const payload = {
         iss: clientId,
         sub: clientId,
-        aud: oktaAuth.options.issuer + '/v1/token',
+        // Use stored issuerUrl instead of oktaAuth.options
+        aud: issuerUrl + '/v1/token',
         iat: now,
         exp: now + 300, // 5 minutes expiry
         jti: crypto.randomUUID()
@@ -88,9 +33,76 @@ function createSignedJWT(clientId) {
     return jwt;
 }
 
+// Initialize Okta Auth after fetching configuration
+async function initializeAuth() {
+    try {
+        const response = await fetch('/config');
+        const config = await response.json();
+        
+        console.log('Config loaded:', {
+            issuer: config.oktaIssuer,
+            clientId: config.oktaClientId,
+            hasPrivateKey: !!config.privateKey
+        });
+        
+        // Store issuer URL
+        issuerUrl = config.oktaIssuer;
+        
+        // Format the private key by ensuring proper line breaks
+        privateKey = config.privateKey
+            .replace(/\\n/g, '\n')
+            .replace(/"/g, '')
+            .trim();
+            
+        console.log('Private key formatted:', privateKey.slice(0, 50) + '...');
+        
+        // Create JWT before initializing oktaAuth
+        const initialJwt = createSignedJWT(config.oktaClientId);
+        
+        oktaAuth = new OktaAuth({
+            issuer: config.oktaIssuer,
+            clientId: config.oktaClientId,
+            redirectUri: window.location.origin + '/callback',
+            scopes: ['openid', 'profile', 'email'],
+            tokenManager: {
+                storage: 'localStorage'
+            },
+            pkce: false,
+            responseType: ['code'],
+            clientAssertionType: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+            clientAssertion: initialJwt
+        });
+
+        // Wait for oktaAuth to be properly initialized
+        await oktaAuth.start();
+
+        // Add status indicator to the page
+        const header = document.querySelector('header');
+        const statusDiv = document.createElement('div');
+        statusDiv.id = 'auth-status';
+        statusDiv.style.padding = '10px';
+        header.appendChild(statusDiv);
+
+        // Check auth state after initialization
+        if (window.location.pathname !== '/callback') {
+            await checkAuth();
+        }
+    } catch (error) {
+        console.error('Failed to initialize auth:', error);
+        updateUI(false, null, error.message);
+    }
+}
+
+// Initialize auth when the page loads
+initializeAuth();
+
 // Login function with better error handling
 async function login() {
     try {
+        if (!oktaAuth) {
+            throw new Error('Authentication not initialized');
+        }
+
         console.log('Starting login process...');
         updateUI(false, null, 'Initiating login...');
 
