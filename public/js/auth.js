@@ -32,10 +32,10 @@ async function initializeAuth() {
             tokenManager: {
                 storage: 'localStorage'
             },
-            authParams: {
-                responseType: ['code'],
-                pkce: false
-            }
+            pkce: false,
+            responseType: ['code'],
+            clientAssertionType: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+            clientAssertion: createSignedJWT(config.oktaClientId)
         });
 
         // Wait for oktaAuth to be properly initialized
@@ -94,23 +94,19 @@ async function login() {
         console.log('Starting login process...');
         updateUI(false, null, 'Initiating login...');
 
-        // Start the authorization flow
-        const authParams = {
+        // Create the signed JWT
+        const clientAssertion = createSignedJWT(oktaAuth.options.clientId);
+        
+        console.log('Created client assertion JWT');
+
+        // Start the authorization flow using the correct method
+        await oktaAuth.signInWithRedirect({
             responseType: ['code'],
             responseMode: 'query',
             clientAssertionType: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-            clientAssertion: createSignedJWT(oktaAuth.options.clientId)
-        };
-
-        console.log('Generated auth params:', {
-            ...authParams,
-            clientAssertion: 'REDACTED'
+            clientAssertion: clientAssertion
         });
 
-        // Generate authorization URL and redirect
-        const authUrl = await oktaAuth.token.prepareAuthorizeUrl(authParams);
-        console.log('Redirecting to:', authUrl);
-        window.location.assign(authUrl);
     } catch (error) {
         console.error('Login error:', error);
         updateUI(false, null, `Login error: ${error.message}`);
