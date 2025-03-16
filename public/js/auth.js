@@ -10,6 +10,12 @@ async function initializeAuth() {
         const response = await fetch('/config');
         const config = await response.json();
         
+        console.log('Config loaded:', {
+            issuer: config.oktaIssuer,
+            clientId: config.oktaClientId,
+            hasPrivateKey: !!config.privateKey
+        });
+        
         privateKey = config.privateKey;
         
         oktaAuth = new OktaAuth({
@@ -26,12 +32,20 @@ async function initializeAuth() {
             }
         });
 
+        // Add status indicator to the page
+        const header = document.querySelector('header');
+        const statusDiv = document.createElement('div');
+        statusDiv.id = 'auth-status';
+        statusDiv.style.padding = '10px';
+        header.appendChild(statusDiv);
+
         // Check auth state after initialization
         if (window.location.pathname !== '/callback') {
             checkAuth();
         }
     } catch (error) {
         console.error('Failed to initialize auth:', error);
+        updateUI(false, null, error.message);
     }
 }
 
@@ -65,9 +79,12 @@ function createSignedJWT(clientId) {
     return jwt;
 }
 
-// Login function
+// Login function with better error handling
 async function login() {
     try {
+        console.log('Starting login process...');
+        updateUI(false, null, 'Initiating login...');
+
         // Start the authorization flow
         const authParams = {
             responseType: ['code'],
@@ -76,11 +93,18 @@ async function login() {
             clientAssertion: createSignedJWT(oktaAuth.options.clientId)
         };
 
+        console.log('Generated auth params:', {
+            ...authParams,
+            clientAssertion: 'REDACTED'
+        });
+
         // Generate authorization URL and redirect
         const authUrl = await oktaAuth.token.prepareAuthorizeUrl(authParams);
+        console.log('Redirecting to:', authUrl);
         window.location.assign(authUrl);
     } catch (error) {
         console.error('Login error:', error);
+        updateUI(false, null, `Login error: ${error.message}`);
     }
 }
 
@@ -134,12 +158,16 @@ async function logout() {
     }
 }
 
-// Check authentication state and update UI
+// Check authentication state with better error handling
 async function checkAuth() {
     try {
+        console.log('Checking authentication state...');
         const authenticated = await oktaAuth.isAuthenticated();
+        console.log('Is authenticated:', authenticated);
+        
         if (authenticated) {
             const user = await oktaAuth.getUser();
+            console.log('User info:', user);
             updateUI(true, user);
             initializeChat();
         } else {
@@ -147,23 +175,35 @@ async function checkAuth() {
         }
     } catch (error) {
         console.error('Auth check error:', error);
+        updateUI(false, null, `Auth check error: ${error.message}`);
     }
 }
 
-// Update UI based on authentication state
-function updateUI(isAuthenticated, user = null) {
+// Update UI with more detailed status
+function updateUI(isAuthenticated, user = null, message = '') {
     const loginButton = document.getElementById('login-button');
     const logoutButton = document.getElementById('logout-button');
     const username = document.getElementById('username');
+    const statusDiv = document.getElementById('auth-status');
 
     if (isAuthenticated && user) {
         loginButton.style.display = 'none';
         logoutButton.style.display = 'block';
         username.textContent = `Welcome, ${user.name}!`;
+        if (statusDiv) {
+            statusDiv.textContent = 'Authenticated';
+            statusDiv.style.backgroundColor = '#dff0d8';
+            statusDiv.style.color = '#3c763d';
+        }
     } else {
         loginButton.style.display = 'block';
         logoutButton.style.display = 'none';
         username.textContent = '';
+        if (statusDiv) {
+            statusDiv.textContent = message || 'Not authenticated';
+            statusDiv.style.backgroundColor = '#f2dede';
+            statusDiv.style.color = '#a94442';
+        }
     }
 }
 
