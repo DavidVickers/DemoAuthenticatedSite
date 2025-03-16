@@ -6,43 +6,19 @@ let oktaAuth;
 // Initialize Okta Auth after fetching configuration
 async function initializeAuth() {
     try {
-        const response = await fetch('/config');
-        const config = await response.json();
+        const response = await fetch('/auth/status');
+        const authStatus = await response.json();
         
-        console.log('Config loaded:', {
-            issuer: config.oktaIssuer,
-            clientId: config.clientId
-        });
-        
-        oktaAuth = new OktaAuth({
-            issuer: config.oktaIssuer,
-            clientId: config.clientId,
-            redirectUri: window.location.origin + '/callback',
-            scopes: ['openid', 'profile', 'email']
-        });
-
-        // Check URL parameters for login status
-        const urlParams = new URLSearchParams(window.location.search);
-        const loginSuccess = urlParams.get('login');
-        const error = urlParams.get('error');
-
-        if (loginSuccess === 'success') {
-            console.log('Login successful');
-            updateUI(true);
+        if (authStatus.isAuthenticated) {
+            console.log('User is authenticated:', authStatus.user);
+            updateUI(true, authStatus.user);
             initializeChat();
-            // Clean up the URL
-            window.history.replaceState({}, document.title, '/');
-        } else if (error) {
-            console.error('Login error:', error);
-            updateUI(false, null, decodeURIComponent(error));
-            // Clean up the URL
-            window.history.replaceState({}, document.title, '/');
         } else {
-            checkAuth();
+            updateUI(false);
         }
 
     } catch (error) {
-        console.error('Failed to initialize auth:', error);
+        console.error('Failed to check auth status:', error);
         updateUI(false, null, error.message);
     }
 }
@@ -108,11 +84,7 @@ function generateSessionId() {
 // Logout function
 async function logout() {
     try {
-        window.location.href = oktaAuth.options.issuer + '/v1/logout?' +
-            new URLSearchParams({
-                client_id: oktaAuth.options.clientId,
-                post_logout_redirect_uri: window.location.origin
-            });
+        window.location.href = '/auth/logout';
     } catch (error) {
         console.error('Logout error:', error);
     }
