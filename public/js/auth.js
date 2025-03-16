@@ -29,28 +29,32 @@ initializeAuth();
 // Login function
 async function login() {
     try {
-        if (!oktaAuth) {
-            throw new Error('Authentication not initialized');
-        }
-
         console.log('Starting login process...');
         updateUI(false, null, 'Initiating login...');
+
+        // Get the configuration from server
+        const configResponse = await fetch('/config');
+        const config = await configResponse.json();
+        
+        if (!config.oktaIssuer || !config.clientId) {
+            throw new Error('Missing Okta configuration');
+        }
 
         // Create state
         const state = generateSessionId();
 
         // Get base domain from issuer URL
-        const oktaDomain = oktaAuth.options.issuer.replace('/oauth2/default', '');
+        const oktaDomain = config.oktaIssuer.replace('/oauth2/default', '');
         
-        // Construct the authorization URL with exact format
+        // Construct the authorization URL
         const authUrl = new URL(`${oktaDomain}/oauth2/v1/authorize`);
         
         // Add required parameters
         const params = {
-            client_id: '0oapqf53ryMdtfqoE697', // Hardcoding to ensure correct ID
+            client_id: config.clientId,
             response_type: 'code',
             scope: 'openid profile email',
-            redirect_uri: 'https://vickers-demo-site.herokuapp.com/callback', // Hardcoding full URL
+            redirect_uri: 'https://vickers-demo-site.herokuapp.com/callback',
             state: state
         };
 
@@ -61,11 +65,6 @@ async function login() {
 
         const finalUrl = authUrl.toString();
         console.log('Redirecting to:', finalUrl);
-        
-        // Verify URL format before redirect
-        if (!finalUrl.includes('trial-8906870.okta.com')) {
-            throw new Error('Invalid Okta domain in authorization URL');
-        }
 
         // Redirect to Okta
         window.location.assign(finalUrl);
