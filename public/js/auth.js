@@ -55,21 +55,39 @@ async function login() {
         console.log('Starting login process...');
         updateUI(false, null, 'Initiating login...');
 
-        // Create state with chat session info
+        // Create state
         const state = generateSessionId();
 
-        // Construct the authorization URL directly
-        const authUrl = new URL(`${oktaAuth.options.issuer}/oauth2/v1/authorize`);
-        authUrl.searchParams.append('client_id', oktaAuth.options.clientId);
-        authUrl.searchParams.append('response_type', 'code');
-        authUrl.searchParams.append('scope', 'openid profile email');
-        authUrl.searchParams.append('redirect_uri', window.location.origin + '/callback');
-        authUrl.searchParams.append('state', state);
-
-        console.log('Redirecting to:', authUrl.toString());
+        // Get base domain from issuer URL
+        const oktaDomain = oktaAuth.options.issuer.replace('/oauth2/default', '');
         
+        // Construct the authorization URL with exact format
+        const authUrl = new URL(`${oktaDomain}/oauth2/v1/authorize`);
+        
+        // Add required parameters
+        const params = {
+            client_id: '0oapqf53ryMdtfqoE697', // Hardcoding to ensure correct ID
+            response_type: 'code',
+            scope: 'openid profile email',
+            redirect_uri: 'https://vickers-demo-site.herokuapp.com/callback', // Hardcoding full URL
+            state: state
+        };
+
+        // Add all parameters to URL
+        Object.entries(params).forEach(([key, value]) => {
+            authUrl.searchParams.append(key, value);
+        });
+
+        const finalUrl = authUrl.toString();
+        console.log('Redirecting to:', finalUrl);
+        
+        // Verify URL format before redirect
+        if (!finalUrl.includes('trial-8906870.okta.com')) {
+            throw new Error('Invalid Okta domain in authorization URL');
+        }
+
         // Redirect to Okta
-        window.location.assign(authUrl.toString());
+        window.location.assign(finalUrl);
 
     } catch (error) {
         console.error('Login error:', error);
