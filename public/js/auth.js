@@ -106,6 +106,12 @@ async function login() {
         console.log('Starting login process...');
         updateUI(false, null, 'Initiating login...');
 
+        // Create state with chat session info
+        const state = {
+            chatSessionId: generateSessionId(), // You'll need to implement this
+            timestamp: Date.now()
+        };
+
         // Create the signed JWT
         const clientAssertion = createSignedJWT(oktaAuth.options.clientId);
         
@@ -116,7 +122,8 @@ async function login() {
             responseType: ['code'],
             responseMode: 'query',
             clientAssertionType: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-            clientAssertion: clientAssertion
+            clientAssertion: clientAssertion,
+            state: encodeURIComponent(JSON.stringify(state))
         });
 
     } catch (error) {
@@ -125,67 +132,60 @@ async function login() {
     }
 }
 
+// Helper function to generate session ID
+function generateSessionId() {
+    return 'chat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
 // Handle callback
 async function handleCallback() {
     try {
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get('code');
-
-        if (code) {
-            // Exchange the authorization code for tokens
-            const tokenParams = new URLSearchParams({
-                grant_type: 'authorization_code',
-                code: code,
-                redirect_uri: oktaAuth.options.redirectUri,
-                client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-                client_assertion: createSignedJWT(oktaAuth.options.clientId)
-            });
-
-            const response = await fetch(oktaAuth.options.issuer + '/v1/token', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Accept': 'application/json'
-                },
-                body: tokenParams
-            });
-
-            const tokens = await response.json();
-            
-            if (tokens.error) {
-                throw new Error(tokens.error_description || tokens.error);
-            }
-
-            // Store the tokens
-            await oktaAuth.tokenManager.setTokens(tokens);
-            window.location.href = '/';
+        // The server will handle the token exchange
+        const response = await fetch('/callback' + window.location.search);
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.error || 'Token exchange failed');
         }
+
+        // Store the user info
+        localStorage.setItem('userInfo', JSON.stringify(result.user_info));
+
+        // Redirect back to main page
+        window.location.href = '/';
     } catch (error) {
         console.error('Callback error:', error);
+        updateUI(false, null, `Callback error: ${error.message}`);
     }
 }
 
 // Logout function
 async function logout() {
     try {
-        await oktaAuth.signOut();
+        localStorage.removeItem('userInfo');
+        localStorage.removeItem('userEmail');
         updateUI(false);
+        window.location.href = oktaAuth.options.issuer + '/v1/logout?' +
+            new URLSearchParams({
+                client_id: oktaAuth.options.clientId,
+                post_logout_redirect_uri: window.location.origin
+            });
     } catch (error) {
         console.error('Logout error:', error);
     }
 }
 
-// Check authentication state with better error handling
+// Check authentication state
 async function checkAuth() {
     try {
         console.log('Checking authentication state...');
-        const authenticated = await oktaAuth.isAuthenticated();
-        console.log('Is authenticated:', authenticated);
         
-        if (authenticated) {
-            const user = await oktaAuth.getUser();
-            console.log('User info:', user);
-            updateUI(true, user);
+        const userInfo = localStorage.getItem('userInfo');
+        const userEmail = localStorage.getItem('userEmail');
+
+        if (userInfo && userEmail) {
+            console.log('User info found:', JSON.parse(userInfo));
+            updateUI(true, JSON.parse(userInfo));
             initializeChat();
         } else {
             updateUI(false);
