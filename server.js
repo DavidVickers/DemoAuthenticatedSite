@@ -1,5 +1,7 @@
 const express = require('express');
 const path = require('path');
+const jwt = require('jsonwebtoken');
+const fetch = require('node-fetch');
 const app = express();
 require('dotenv').config();
 
@@ -14,58 +16,60 @@ app.use(express.static('public'));
 
 // Serve configuration
 app.get('/config', (req, res) => {
-    // Format private key to ensure proper line breaks
-    const formattedPrivateKey = process.env.PRIVATE_KEY
-        .replace(/\\n/g, '\n')
-        .replace(/"/g, '')
-        .trim();
-
     res.json({
         oktaIssuer: process.env.OKTA_ISSUER_URL,
-        oktaClientId: process.env.OKTA_CLIENT_ID,
-        privateKey: formattedPrivateKey
+        clientId: process.env.OKTA_CLIENT_ID
     });
 });
 
-// Handle the token exchange
+// Handle the token exchange at callback
 app.get('/callback', async (req, res) => {
-    try {
-        const { code, state } = req.query;
-        
-        console.log('Received authorization code');
-        
-        // Exchange the code for tokens
-        const tokenEndpoint = `${process.env.OKTA_ISSUER_URL}/v1/token`;
-        const clientAssertion = createJWT(
-            process.env.OKTA_CLIENT_ID,
-            process.env.PRIVATE_KEY,
-            process.env.OKTA_ISSUER_URL
-        );
+    const code = req.query.code;
+    if (!code) {
+        return res.status(400).send('No authorization code returned');
+    }
 
-        const tokenParams = new URLSearchParams({
-            grant_type: 'authorization_code',
-            code: code,
-            redirect_uri: `${req.protocol}://${req.get('host')}/callback`,
-            client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-            client_assertion: clientAssertion
+    try {
+        // Create a JWT for client authentication
+        const clientAssertion = jwt.sign({
+            iss: process.env.OKTA_CLIENT_ID,
+            sub: process.env.OKTA_CLIENT_ID,
+            aud: `${process.env.OKTA_ISSUER_URL}/v1/token`,
+            iat: Math.floor(Date.now() / 1000),
+            exp: Math.floor(Date.now() / 1000) + 300,
+            jti: crypto.randomUUID()
+        }, process.env.PRIVATE_KEY, {
+            algorithm: 'RS256',
+            header: {
+                alg: 'RS256',
+                typ: 'JWT'
+            }
         });
 
-        const tokenResponse = await fetch(tokenEndpoint, {
+        // Prepare token exchange parameters
+        const params = new URLSearchParams();
+        params.append('grant_type', 'authorization_code');
+        params.append('code', code);
+        params.append('redirect_uri', `${req.protocol}://${req.get('host')}/callback`);
+        params.append('client_assertion_type', 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer');
+        params.append('client_assertion', clientAssertion);
+
+        // Exchange code for tokens
+        const tokenResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/token`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Accept': 'application/json'
+                'Content-Type': 'application/x-www-form-urlencoded'
             },
-            body: tokenParams
+            body: params
         });
 
         const tokens = await tokenResponse.json();
 
-        if (tokens.error) {
-            throw new Error(tokens.error_description || tokens.error);
+        if (!tokenResponse.ok) {
+            throw new Error(tokens.error_description || tokens.error || 'Token exchange failed');
         }
 
-        // Get user info
+        // Get user info using the access token
         const userInfoResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/userinfo`, {
             headers: {
                 'Authorization': `Bearer ${tokens.access_token}`
@@ -74,44 +78,14 @@ app.get('/callback', async (req, res) => {
 
         const userInfo = await userInfoResponse.json();
 
-        // Store tokens and user info in session or send to client
-        res.json({
-            success: true,
-            message: 'Authentication successful',
-            user_info: userInfo
-        });
+        // Redirect to the main page with success
+        res.redirect('/?login=success');
 
     } catch (error) {
-        console.error('Token exchange error:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        console.error('Token exchange failed:', error);
+        res.redirect('/?error=' + encodeURIComponent(error.message));
     }
 });
-
-// Helper function to create JWT
-function createJWT(clientId, privateKey, issuer) {
-    const now = Math.floor(Date.now() / 1000);
-    const header = {
-        alg: 'RS256',
-        typ: 'JWT'
-    };
-    
-    const payload = {
-        iss: clientId,
-        sub: clientId,
-        aud: `${issuer}/v1/token`,
-        iat: now,
-        exp: now + 300,
-        jti: crypto.randomUUID()
-    };
-
-    return jwt.sign(payload, privateKey, { 
-        algorithm: 'RS256',
-        header: header 
-    });
-}
 
 // Serve index.html for the root route
 app.get('/', (req, res) => {
