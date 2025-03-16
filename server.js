@@ -9,136 +9,152 @@ require('dotenv').config();
 
 const PORT = process.env.PORT || 3000;
 
-// Configure session middleware FIRST
+// Configure session middleware
 app.use(session({
-    secret: crypto.randomBytes(32).toString('hex'), // Generate a random secret
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: true, // Required for production HTTPS
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    }
+  secret: crypto.randomBytes(32).toString('hex'),
+  resave: false,
+  saveUninitialized: false,
+  // If testing locally over HTTP, set secure to false.
+  cookie: {
+    secure: process.env.NODE_ENV === 'production', // true in production (HTTPS), false for local HTTP testing
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
 }));
 
-// Add body parser for JSON
+// Body parsers for JSON and URL-encoded data
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Add authentication check middleware
+// Attach authentication status to res.locals for use in templates (if needed)
 app.use((req, res, next) => {
-    res.locals.isAuthenticated = req.session.isAuthenticated;
-    res.locals.user = req.session.user;
-    next();
+  res.locals.isAuthenticated = req.session.isAuthenticated;
+  res.locals.user = req.session.user;
+  next();
 });
 
-// IMPORTANT: Place callback route BEFORE static file serving
+// ------------------------
+// Callback Route (Token Exchange)
+// ------------------------
+// This route must be placed BEFORE the static file serving middleware.
 app.get('/callback', async (req, res) => {
-    const code = req.query.code;
-    if (!code) {
-        return res.redirect('/?error=' + encodeURIComponent('No authorization code returned'));
+  const code = req.query.code;
+  if (!code) {
+    console.error('No authorization code returned');
+    return res.redirect('/?error=' + encodeURIComponent('No authorization code returned'));
+  }
+
+  try {
+    console.log('Received authorization code, starting token exchange');
+
+    // Create a JWT for client authentication (client assertion)
+    const clientAssertion = jwt.sign({
+      iss: process.env.OKTA_CLIENT_ID,
+      sub: process.env.OKTA_CLIENT_ID,
+      aud: `${process.env.OKTA_ISSUER_URL}/v1/token`,
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 300, // expires in 5 minutes
+      jti: crypto.randomUUID()
+    }, process.env.PRIVATE_KEY, {
+      algorithm: 'RS256',
+      header: { alg: 'RS256', typ: 'JWT' }
+    });
+
+    // Perform the token exchange with Okta
+    const tokenResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: 'https://vickers-demo-site.herokuapp.com/callback', // Must match your Okta configuration
+        client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+        client_assertion: clientAssertion
+      })
+    });
+
+    const tokens = await tokenResponse.json();
+    console.log('Token exchange response:', tokens);
+
+    if (!tokenResponse.ok) {
+      console.error('Token exchange error:', tokens);
+      throw new Error(tokens.error_description || tokens.error || 'Token exchange failed');
     }
 
-    try {
-        console.log('Received authorization code, starting token exchange');
+    // Retrieve user info using the access token
+    const userInfoResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/userinfo`, {
+      headers: {
+        'Authorization': `Bearer ${tokens.access_token}`
+      }
+    });
 
-        // Create JWT for token exchange
-        const clientAssertion = jwt.sign({
-            iss: process.env.OKTA_CLIENT_ID,
-            sub: process.env.OKTA_CLIENT_ID,
-            aud: `${process.env.OKTA_ISSUER_URL}/v1/token`,
-            iat: Math.floor(Date.now() / 1000),
-            exp: Math.floor(Date.now() / 1000) + 300,
-            jti: crypto.randomUUID()
-        }, process.env.PRIVATE_KEY, {
-            algorithm: 'RS256',
-            header: { alg: 'RS256', typ: 'JWT' }
-        });
+    const userInfo = await userInfoResponse.json();
+    console.log('User info retrieved:', userInfo);
 
-        // Exchange code for tokens
-        const tokenResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/token`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Accept': 'application/json'
-            },
-            body: new URLSearchParams({
-                grant_type: 'authorization_code',
-                code: code,
-                redirect_uri: 'https://vickers-demo-site.herokuapp.com/callback',
-                client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-                client_assertion: clientAssertion
-            })
-        });
+    // Store authentication status and tokens in session
+    req.session.isAuthenticated = true;
+    req.session.tokens = tokens;
+    req.session.user = userInfo;
 
-        const tokens = await tokenResponse.json();
-        console.log('Token exchange completed');
+    // Save the session and redirect to the home page
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err);
+        return res.redirect('/?error=' + encodeURIComponent('Session save failed'));
+      }
+      console.log('Session saved, redirecting to home');
+      res.redirect('/');
+    });
 
-        if (!tokenResponse.ok) {
-            throw new Error(tokens.error_description || tokens.error || 'Token exchange failed');
-        }
-
-        // Get user info using access token
-        const userInfoResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/userinfo`, {
-            headers: {
-                'Authorization': `Bearer ${tokens.access_token}`
-            }
-        });
-
-        const userInfo = await userInfoResponse.json();
-        console.log('User info retrieved');
-
-        // Store in session
-        req.session.isAuthenticated = true;
-        req.session.tokens = tokens;
-        req.session.user = userInfo;
-        
-        // Ensure session is saved before redirect
-        req.session.save((err) => {
-            if (err) {
-                console.error('Session save error:', err);
-                return res.redirect('/?error=' + encodeURIComponent('Session save failed'));
-            }
-            console.log('Session saved, redirecting to home');
-            res.redirect('/');
-        });
-
-    } catch (error) {
-        console.error('Token exchange failed:', error);
-        res.redirect('/?error=' + encodeURIComponent(error.message));
-    }
+  } catch (error) {
+    console.error('Token exchange failed:', error);
+    res.redirect('/?error=' + encodeURIComponent(error.message));
+  }
 });
 
-// API routes
+// ------------------------
+// API Routes and Endpoints
+// ------------------------
+
+// Provide configuration data for the client (e.g., Okta issuer, client ID)
 app.get('/config', (req, res) => {
-    res.json({
-        oktaIssuer: process.env.OKTA_ISSUER_URL,
-        clientId: process.env.OKTA_CLIENT_ID,
-        isAuthenticated: req.session.isAuthenticated || false
-    });
+  res.json({
+    oktaIssuer: process.env.OKTA_ISSUER_URL,
+    clientId: process.env.OKTA_CLIENT_ID,
+    isAuthenticated: req.session.isAuthenticated || false
+  });
 });
 
+// Return authentication status to client-side code
 app.get('/auth/status', (req, res) => {
-    res.json({
-        isAuthenticated: req.session.isAuthenticated || false,
-        user: req.session.user || null
-    });
+  res.json({
+    isAuthenticated: req.session.isAuthenticated || false,
+    user: req.session.user || null
+  });
 });
 
+// Logout route – destroys session and redirects to home
 app.get('/auth/logout', (req, res) => {
-    req.session.destroy(() => {
-        res.redirect('/');
-    });
+  req.session.destroy(() => {
+    res.redirect('/');
+  });
 });
 
-// Serve static files AFTER routes
+// ------------------------
+// Static File Serving
+// ------------------------
+// Make sure no static file (like a callback.html) conflicts with our /callback route.
 app.use(express.static('public'));
 
-// Serve index.html last
+// Catch-all for root: serve index.html
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Start the server
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-}); 
+  console.log(`Server is running on port ${PORT}`);
+});
