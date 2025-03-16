@@ -16,7 +16,13 @@ async function initializeAuth() {
             hasPrivateKey: !!config.privateKey
         });
         
-        privateKey = config.privateKey;
+        // Format the private key by ensuring proper line breaks
+        privateKey = config.privateKey
+            .replace(/\\n/g, '\n')
+            .replace(/"/g, '')
+            .trim();
+            
+        console.log('Private key formatted:', privateKey.slice(0, 50) + '...');
         
         oktaAuth = new OktaAuth({
             issuer: config.oktaIssuer,
@@ -31,6 +37,9 @@ async function initializeAuth() {
                 pkce: false
             }
         });
+
+        // Wait for oktaAuth to be properly initialized
+        await oktaAuth.start();
 
         // Add status indicator to the page
         const header = document.querySelector('header');
