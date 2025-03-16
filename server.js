@@ -9,7 +9,7 @@ require('dotenv').config();
 
 const PORT = process.env.PORT || 3000;
 
-// Configure session middleware
+// Configure session middleware FIRST
 app.use(session({
     secret: crypto.randomBytes(32).toString('hex'), // Generate a random secret
     resave: false,
@@ -25,9 +25,6 @@ app.use(session({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from the public directory
-app.use(express.static('public'));
-
 // Add authentication check middleware
 app.use((req, res, next) => {
     res.locals.isAuthenticated = req.session.isAuthenticated;
@@ -35,24 +32,7 @@ app.use((req, res, next) => {
     next();
 });
 
-// Serve configuration
-app.get('/config', (req, res) => {
-    res.json({
-        oktaIssuer: process.env.OKTA_ISSUER_URL,
-        clientId: process.env.OKTA_CLIENT_ID,
-        isAuthenticated: req.session.isAuthenticated || false
-    });
-});
-
-// Add session check endpoint
-app.get('/auth/status', (req, res) => {
-    res.json({
-        isAuthenticated: req.session.isAuthenticated || false,
-        user: req.session.user || null
-    });
-});
-
-// Handle the token exchange at callback
+// IMPORTANT: Place callback route BEFORE static file serving
 app.get('/callback', async (req, res) => {
     const code = req.query.code;
     if (!code) {
@@ -60,7 +40,9 @@ app.get('/callback', async (req, res) => {
     }
 
     try {
-        // Create a JWT for client authentication
+        console.log('Received authorization code, starting token exchange');
+
+        // Create JWT for token exchange
         const clientAssertion = jwt.sign({
             iss: process.env.OKTA_CLIENT_ID,
             sub: process.env.OKTA_CLIENT_ID,
@@ -90,12 +72,13 @@ app.get('/callback', async (req, res) => {
         });
 
         const tokens = await tokenResponse.json();
+        console.log('Token exchange completed');
 
         if (!tokenResponse.ok) {
             throw new Error(tokens.error_description || tokens.error || 'Token exchange failed');
         }
 
-        // Get user info
+        // Get user info using access token
         const userInfoResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/userinfo`, {
             headers: {
                 'Authorization': `Bearer ${tokens.access_token}`
@@ -103,29 +86,55 @@ app.get('/callback', async (req, res) => {
         });
 
         const userInfo = await userInfoResponse.json();
+        console.log('User info retrieved');
 
-        // Store authentication state and user info in session
+        // Store in session
         req.session.isAuthenticated = true;
         req.session.tokens = tokens;
         req.session.user = userInfo;
-
-        // Redirect to main page
-        return res.redirect('/');
+        
+        // Ensure session is saved before redirect
+        req.session.save((err) => {
+            if (err) {
+                console.error('Session save error:', err);
+                return res.redirect('/?error=' + encodeURIComponent('Session save failed'));
+            }
+            console.log('Session saved, redirecting to home');
+            res.redirect('/');
+        });
 
     } catch (error) {
         console.error('Token exchange failed:', error);
-        return res.redirect('/?error=' + encodeURIComponent(error.message));
+        res.redirect('/?error=' + encodeURIComponent(error.message));
     }
 });
 
-// Add logout endpoint
+// API routes
+app.get('/config', (req, res) => {
+    res.json({
+        oktaIssuer: process.env.OKTA_ISSUER_URL,
+        clientId: process.env.OKTA_CLIENT_ID,
+        isAuthenticated: req.session.isAuthenticated || false
+    });
+});
+
+app.get('/auth/status', (req, res) => {
+    res.json({
+        isAuthenticated: req.session.isAuthenticated || false,
+        user: req.session.user || null
+    });
+});
+
 app.get('/auth/logout', (req, res) => {
     req.session.destroy(() => {
         res.redirect('/');
     });
 });
 
-// Serve index.html for the root route
+// Serve static files AFTER routes
+app.use(express.static('public'));
+
+// Serve index.html last
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
