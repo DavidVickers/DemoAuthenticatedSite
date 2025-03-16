@@ -8,6 +8,7 @@ const app = express();
 require('dotenv').config();
 
 const PORT = process.env.PORT || 3000;
+const CALLBACK_URL = process.env.CALLBACK_URL || 'http://localhost:3000/callback';
 
 // Configure session middleware FIRST
 app.use(session({
@@ -38,6 +39,14 @@ app.use((req, res, next) => {
 // ------------------------
 // This must come BEFORE static middleware.
 app.get('/callback', async (req, res) => {
+  console.log('Callback received at:', CALLBACK_URL);
+  console.log('Request details:', {
+    code: req.query.code ? 'present' : 'missing',
+    state: req.query.state,
+    host: req.get('host'),
+    protocol: req.protocol
+  });
+
   const code = req.query.code;
   if (!code) {
     console.error('No authorization code returned');
@@ -45,7 +54,7 @@ app.get('/callback', async (req, res) => {
   }
 
   try {
-    console.log('Received authorization code, starting token exchange');
+    console.log('Starting token exchange with Okta...');
 
     // Create a JWT for client authentication
     const clientAssertion = jwt.sign({
@@ -70,14 +79,15 @@ app.get('/callback', async (req, res) => {
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code: code,
-        redirect_uri: 'https://vickers-demo-site.herokuapp.com/callback',
+        redirect_uri: CALLBACK_URL,
         client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
         client_assertion: clientAssertion
       })
     });
 
+    console.log('Token response status:', tokenResponse.status);
     const tokens = await tokenResponse.json();
-    console.log('Token exchange response:', tokens);
+    console.log('Token response headers:', tokenResponse.headers);
 
     if (!tokenResponse.ok) {
       console.error('Token exchange error:', tokens);
@@ -110,7 +120,11 @@ app.get('/callback', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Token exchange failed:', error);
+    console.error('Token exchange error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     res.redirect('/?error=' + encodeURIComponent(error.message));
   }
 });
@@ -122,6 +136,7 @@ app.get('/config', (req, res) => {
   res.json({
     oktaIssuer: process.env.OKTA_ISSUER_URL,
     clientId: process.env.OKTA_CLIENT_ID,
+    callbackUrl: CALLBACK_URL,
     isAuthenticated: req.session.isAuthenticated || false
   });
 });

@@ -34,8 +34,8 @@ async function login() {
     const configResponse = await fetch('/config');
     const config = await configResponse.json();
     
-    if (!config.oktaIssuer || !config.clientId) {
-      throw new Error('Missing Okta configuration');
+    if (!config.oktaIssuer || !config.clientId || !config.callbackUrl) {
+      throw new Error('Missing required configuration');
     }
 
     // Generate a state value (optionally store this in session for later verification)
@@ -52,7 +52,7 @@ async function login() {
       client_id: config.clientId,
       response_type: 'code',
       scope: 'openid profile email',
-      redirect_uri: 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback',
+      redirect_uri: config.callbackUrl,
       state: state
     };
 
