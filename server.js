@@ -40,82 +40,100 @@ app.use((req, res, next) => {
 // ------------------------
 // This must come BEFORE static middleware.
 app.get('/callback', async (req, res) => {
-  const code = req.query.code;
-  if (!code) {
-    console.error('No authorization code returned');
-    return res.redirect('/?error=' + encodeURIComponent('No authorization code returned'));
-  }
-
-  try {
-    console.log('Received authorization code, starting token exchange');
-
-    // Create a JWT for client authentication (client assertion)
-    const clientAssertion = jwt.sign({
-      iss: process.env.OKTA_CLIENT_ID,
-      sub: process.env.OKTA_CLIENT_ID,
-      aud: `${process.env.OKTA_ISSUER_URL}/v1/token`,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 300, // expires in 5 minutes
-      jti: crypto.randomUUID()
-    }, process.env.PRIVATE_KEY, {
-      algorithm: 'RS256',
-      header: { alg: 'RS256', typ: 'JWT' }
-    });
-
-    // Exchange code for tokens with Okta
-    const tokenResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json'
-      },
-      body: new URLSearchParams({
+    console.log('=== /callback route hit ===');
+    console.log('Query parameters:', req.query);
+  
+    const code = req.query.code;
+    if (!code) {
+      console.error('No authorization code returned.');
+      return res.redirect('/?error=' + encodeURIComponent('No authorization code returned'));
+    }
+    console.log('Authorization code received:', code);
+  
+    try {
+      // Build JWT payload for client assertion
+      const now = Math.floor(Date.now() / 1000);
+      const jwtPayload = {
+        iss: process.env.OKTA_CLIENT_ID,
+        sub: process.env.OKTA_CLIENT_ID,
+        aud: `${process.env.OKTA_ISSUER_URL}/v1/token`,
+        iat: now,
+        exp: now + 300, // Token valid for 5 minutes
+        jti: crypto.randomUUID()
+      };
+      console.log('JWT payload:', jwtPayload);
+  
+      // Sign the JWT using your private key
+      const clientAssertion = jwt.sign(jwtPayload, process.env.PRIVATE_KEY, {
+        algorithm: 'RS256',
+        header: { alg: 'RS256', typ: 'JWT' }
+      });
+      console.log('Generated client assertion JWT:', clientAssertion);
+  
+      // Build the token request body
+      const bodyParams = new URLSearchParams({
         grant_type: 'authorization_code',
         code: code,
-        redirect_uri: CALLBACK_URL,  // Use our updated callback URL
+        redirect_uri: process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback',
         client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
         client_assertion: clientAssertion
-      })
-    });
-
-    const tokens = await tokenResponse.json();
-    console.log('Token exchange response:', tokens);
-
-    if (!tokenResponse.ok) {
-      console.error('Token exchange error:', tokens);
-      throw new Error(tokens.error_description || tokens.error || 'Token exchange failed');
+      });
+      console.log('Token request body:', bodyParams.toString());
+  
+      // Define the token endpoint URL
+      const tokenUrl = `${process.env.OKTA_ISSUER_URL}/v1/token`;
+      console.log('Token endpoint URL:', tokenUrl);
+  
+      // Make the token exchange request
+      console.log('Making POST request to token endpoint...');
+      const tokenResponse = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json'
+        },
+        body: bodyParams
+      });
+      console.log('Token response status:', tokenResponse.status);
+  
+      const tokens = await tokenResponse.json();
+      console.log('Token response data:', tokens);
+  
+      if (!tokenResponse.ok) {
+        console.error('Token exchange error:', tokens);
+        throw new Error(tokens.error_description || tokens.error || 'Token exchange failed');
+      }
+  
+      // Retrieve user info using the access token
+      console.log('Attempting to fetch user info with access token...');
+      const userInfoResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/userinfo`, {
+        headers: { 'Authorization': `Bearer ${tokens.access_token}` }
+      });
+      console.log('User info response status:', userInfoResponse.status);
+  
+      const userInfo = await userInfoResponse.json();
+      console.log('User info retrieved:', userInfo);
+  
+      // Store tokens and user info in session
+      req.session.isAuthenticated = true;
+      req.session.tokens = tokens;
+      req.session.user = userInfo;
+  
+      console.log('Saving session with tokens and user info...');
+      req.session.save((err) => {
+        if (err) {
+          console.error('Session save error:', err);
+          return res.redirect('/?error=' + encodeURIComponent('Session save failed'));
+        }
+        console.log('Session saved successfully, redirecting to home page.');
+        res.redirect('/');
+      });
+  
+    } catch (error) {
+      console.error('Error during token exchange in /callback:', error);
+      res.redirect('/?error=' + encodeURIComponent(error.message));
     }
-
-    // Retrieve user info using the access token
-    const userInfoResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/userinfo`, {
-      headers: {
-        'Authorization': `Bearer ${tokens.access_token}`
-      }
-    });
-
-    const userInfo = await userInfoResponse.json();
-    console.log('User info retrieved:', userInfo);
-
-    // Store tokens and user info in session
-    req.session.isAuthenticated = true;
-    req.session.tokens = tokens;
-    req.session.user = userInfo;
-
-    // Save session and redirect to home page
-    req.session.save((err) => {
-      if (err) {
-        console.error('Session save error:', err);
-        return res.redirect('/?error=' + encodeURIComponent('Session save failed'));
-      }
-      console.log('Session saved, redirecting to home');
-      res.redirect('/');
-    });
-
-  } catch (error) {
-    console.error('Token exchange failed:', error);
-    res.redirect('/?error=' + encodeURIComponent(error.message));
-  }
-});
+  });
 
 // ------------------------
 // API Routes and other endpoints
