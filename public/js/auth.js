@@ -1,6 +1,6 @@
 // Note: The JWT signing library is included in index.html:
 // <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/8.0.20/jsrsasign-all-min.js"></script>
-
+//help
 // Login function: builds the authorization URL and redirects the browser to Okta
 async function login() {
     try {
@@ -8,12 +8,9 @@ async function login() {
             throw new Error('Auth client not initialized');
         }
         
-        const state = generateSessionId();
-        
-        // Simple redirect without PKCE
         await window.authClient.token.getWithRedirect({
             responseType: 'code',
-            state: state,
+            state: generateSessionId(),
             scopes: ['openid', 'profile', 'email']
         });
     } catch (error) {
