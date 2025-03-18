@@ -98,8 +98,7 @@ async function initializeServer() {
                     code: code,
                     redirect_uri: process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback',
                     client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-                    client_assertion: clientAssertion,
-                    code_verifier: req.session.codeVerifier // This will be set in a moment
+                    client_assertion: clientAssertion
                 });
 
                 // Token exchange
