@@ -38,6 +38,15 @@ async function login() {
     // Store code verifier in sessionStorage
     sessionStorage.setItem('code_verifier', codeVerifier);
     
+    // Send code verifier to server
+    await fetch('/auth/pkce', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ code_verifier: codeVerifier })
+    });
+    
     // Get authorization URL with PKCE
     await window.authClient.token.getWithRedirect({
       responseType: 'code',
@@ -152,13 +161,13 @@ async function initializeAuth() {
     const config = await response.json();
     console.log('Auth config loaded:', config);
 
-    // Initialize Okta Auth with PKCE
+    // Initialize Okta Auth without PKCE
     const authClient = new OktaAuth({
       issuer: config.oktaIssuer,
       clientId: config.clientId,
       redirectUri: config.redirectUri,
       responseType: 'code',
-      pkce: true,
+      pkce: false,  // Disable PKCE
       scopes: ['openid', 'profile', 'email']
     });
 
