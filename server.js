@@ -93,7 +93,7 @@ async function initializeServer() {
                     header: { alg: 'RS256', typ: 'JWT' }
                 });
 
-                // Build token request WITHOUT PKCE
+                // Build token request WITHOUT any PKCE parameters
                 const bodyParams = new URLSearchParams({
                     grant_type: 'authorization_code',
                     code: code,

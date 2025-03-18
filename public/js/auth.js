@@ -112,31 +112,31 @@ async function checkAuthStatus() {
   }
 }
 
-// Update the initialization code to remove pkce property completely
+// Update the initialization code
 async function initializeAuth() {
-  try {
-    const response = await fetch('/config');
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    try {
+        const response = await fetch('/config');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const config = await response.json();
+        console.log('Auth config loaded:', config);
+
+        // Initialize Okta Auth with basic OAuth config
+        const authClient = new OktaAuth({
+            issuer: config.oktaIssuer,
+            clientId: config.clientId,
+            redirectUri: config.redirectUri,
+            responseType: 'code',
+            scopes: ['openid', 'profile', 'email']
+        });
+
+        window.authClient = authClient;
+        await checkAuthStatus();
+    } catch (error) {
+        console.error('Error initializing auth:', error);
+        updateUI(false, null, 'Error initializing authentication');
     }
-    const config = await response.json();
-    console.log('Auth config loaded:', config);
-
-    // Initialize Okta Auth with minimum required config
-    const authClient = new OktaAuth({
-      issuer: config.oktaIssuer,
-      clientId: config.clientId,
-      redirectUri: config.redirectUri,
-      responseType: 'code',
-      scopes: ['openid', 'profile', 'email']
-    });
-
-    window.authClient = authClient;
-    await checkAuthStatus();
-  } catch (error) {
-    console.error('Error initializing auth:', error);
-    updateUI(false, null, 'Error initializing authentication');
-  }
 }
 
 // Make sure to initialize when the page loads
