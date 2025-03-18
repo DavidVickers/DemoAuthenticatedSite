@@ -17,7 +17,8 @@ const createApp = async () => {
         socket: {
             tls: process.env.NODE_ENV === 'production',
             rejectUnauthorized: false
-        }
+        },
+        legacyMode: false
     });
 
     // Set up Redis error handling
@@ -34,16 +35,33 @@ const createApp = async () => {
         store: new RedisStore({ 
             client: redisClient,
             prefix: 'sess:',
+            disableTouch: false,
+            ttl: 86400, // 24 hours
+            retry_strategy: function (options) {
+                if (options.error && options.error.code === 'ECONNREFUSED') {
+                    return new Error('The server refused the connection');
+                }
+                if (options.total_retry_time > 1000 * 60 * 60) {
+                    return new Error('Retry time exhausted');
+                }
+                if (options.attempt > 10) {
+                    return undefined;
+                }
+                return Math.min(options.attempt * 100, 3000);
+            }
         }),
         secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
         name: 'sessionId',
         resave: true,
         saveUninitialized: true,
+        rolling: true,
+        proxy: true, // Trust the reverse proxy
         cookie: {
             secure: process.env.NODE_ENV === 'production',
             httpOnly: true,
             maxAge: 24 * 60 * 60 * 1000,
-            sameSite: 'lax'
+            sameSite: 'lax',
+            path: '/'
         }
     });
 
@@ -73,6 +91,7 @@ const createApp = async () => {
             // Set session data
             req.session.codeVerifier = code_verifier;
             req.session.state = state;
+            req.session.timestamp = Date.now(); // Add timestamp for debugging
             
             // Force session save and wait for completion
             await new Promise((resolve, reject) => {
@@ -83,14 +102,33 @@ const createApp = async () => {
                     } else {
                         console.log('Session saved successfully:', {
                             sessionId: req.sessionID,
-                            hasCodeVerifier: !!req.session.codeVerifier
+                            hasCodeVerifier: !!req.session.codeVerifier,
+                            timestamp: req.session.timestamp
                         });
                         resolve();
                     }
                 });
             });
 
-            res.json({ success: true });
+            // Verify session was saved
+            const savedSession = await new Promise((resolve) => {
+                redisClient.get(`sess:${req.sessionID}`, (err, data) => {
+                    if (err) {
+                        console.error('Failed to verify session:', err);
+                        resolve(null);
+                    } else {
+                        resolve(data);
+                    }
+                });
+            });
+
+            console.log('Verified session data:', savedSession);
+
+            res.json({ 
+                success: true, 
+                sessionId: req.sessionID,
+                timestamp: req.session.timestamp
+            });
         } catch (error) {
             console.error('Error saving PKCE data:', error);
             res.status(500).json({ error: 'Failed to save PKCE data' });
