@@ -4,6 +4,8 @@ const jwt = require('jsonwebtoken');
 const fetch = require('node-fetch');
 const crypto = require('crypto');
 const session = require('express-session');
+const RedisStore = require('connect-redis').default;
+const { createClient } = require('redis');
 const app = express();
 require('dotenv').config();
 
@@ -11,19 +13,26 @@ const PORT = process.env.PORT || 3000;
 // Use an environment variable for the callback URL, with a fallback.
 const CALLBACK_URL = process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback';
 
-// Configure session middleware FIRST
+// Initialize Redis client
+let redisClient = createClient({
+    url: process.env.REDIS_URL || 'redis://localhost:6379'
+});
+
+redisClient.connect().catch(console.error);
+
+// Update session configuration
 app.use(session({
-  secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
-  resave: true,
-  saveUninitialized: true,
-  // For production HTTPS, secure should be true. For local testing, set it to false.
-  cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    sameSite: 'lax'  // Added to help with cross-site cookie issues
-  },
-  name: 'sessionId'  // Added explicit name
+    store: new RedisStore({ client: redisClient }),
+    secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000,
+        sameSite: 'lax'
+    },
+    name: 'sessionId'
 }));
 
 // Add cookie check middleware
@@ -145,6 +154,14 @@ app.get('/callback', async (req, res) => {
     console.log('User info retrieved:', userInfo);
 
     // Store tokens and user info in session
+    console.log('Setting session data:', {
+        isAuthenticated: true,
+        user: {
+            name: `${userInfo.given_name} ${userInfo.family_name}`,
+            email: userInfo.email
+        }
+    });
+
     req.session.isAuthenticated = true;
     req.session.tokens = tokens;
     req.session.user = {
@@ -152,16 +169,20 @@ app.get('/callback', async (req, res) => {
         email: userInfo.email
     };
 
-    // Force session save
-    req.session.save((err) => {
-        if (err) {
-            console.error('Session save error:', err);
-            return res.redirect('/?error=session_save_failed');
-        }
-        
-        // Add a query parameter to trigger immediate auth check
-        res.redirect('/?auth=success');
+    // Force session save and wait for it
+    await new Promise((resolve, reject) => {
+        req.session.save((err) => {
+            if (err) {
+                console.error('Session save error:', err);
+                reject(err);
+                return;
+            }
+            resolve();
+        });
     });
+
+    console.log('Session saved successfully');
+    res.redirect('/?auth=success');
 
   } catch (error) {
     console.error('Detailed error in /callback:', {
@@ -186,16 +207,15 @@ app.get('/config', (req, res) => {
 });
 
 app.get('/auth/status', (req, res) => {
-    console.log('Full session data:', req.session);
-    
-    const isAuthenticated = !!req.session.isAuthenticated;
-    const user = req.session.user || null;
-    
-    console.log('Sending auth status:', { isAuthenticated, user });
+    console.log('Auth status check - Session data:', {
+        id: req.sessionID,
+        isAuthenticated: req.session.isAuthenticated,
+        user: req.session.user
+    });
     
     res.json({
-        isAuthenticated: isAuthenticated,
-        user: user
+        isAuthenticated: !!req.session.isAuthenticated,
+        user: req.session.user || null
     });
 });
 

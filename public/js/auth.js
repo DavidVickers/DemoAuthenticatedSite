@@ -92,12 +92,15 @@ function updateUI(isAuthenticated, user = null, message = '') {
   const userInfoDiv = document.getElementById('user-info-display');
   const statusDiv = document.getElementById('auth-status');
 
+  if (!loginButton || !logoutButton || !userInfoDiv || !statusDiv) {
+    console.error('Required DOM elements not found');
+    return;
+  }
+
   if (isAuthenticated && user) {
-    // Hide login, show logout
     loginButton.style.display = 'none';
     logoutButton.style.display = 'block';
-
-    // Update user info display
+    
     userInfoDiv.innerHTML = `
       <div class="welcome-message">
         <h2>Welcome, ${user.name}!</h2>
@@ -105,24 +108,19 @@ function updateUI(isAuthenticated, user = null, message = '') {
       </div>
     `;
     userInfoDiv.style.display = 'block';
-
-    if (statusDiv) {
-      statusDiv.textContent = 'Authenticated';
-      statusDiv.style.backgroundColor = '#dff0d8';
-      statusDiv.style.color = '#3c763d';
-    }
+    
+    statusDiv.textContent = 'Authenticated';
+    statusDiv.style.backgroundColor = '#dff0d8';
+    statusDiv.style.color = '#3c763d';
   } else {
-    // Show login, hide logout
     loginButton.style.display = 'block';
     logoutButton.style.display = 'none';
     userInfoDiv.style.display = 'none';
     userInfoDiv.innerHTML = '';
-
-    if (statusDiv) {
-      statusDiv.textContent = message || 'Not authenticated';
-      statusDiv.style.backgroundColor = '#f2dede';
-      statusDiv.style.color = '#a94442';
-    }
+    
+    statusDiv.textContent = message || 'Not authenticated';
+    statusDiv.style.backgroundColor = '#f2dede';
+    statusDiv.style.color = '#a94442';
   }
 }
 
