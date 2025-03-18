@@ -16,21 +16,19 @@ const createApp = async () => {
         url: process.env.REDIS_URL,
         socket: {
             tls: process.env.NODE_ENV === 'production',
-            rejectUnauthorized: false,
-            connectTimeout: 10000,
-            keepAlive: 5000
+            rejectUnauthorized: false
         },
-        commandTimeout: 5000
+        legacyMode: false
     });
 
     // Set up Redis error handling
-    redisClient.on('error', (err) => {
+    redisClient.on('error', err => {
         console.error('Redis Client Error:', err);
     });
 
-    // Wait for Redis to connect
-    await redisClient.connect();
-    console.log('Successfully connected to Redis');
+    redisClient.on('connect', () => {
+        console.log('Successfully connected to Redis');
+    });
 
     // Now set up session middleware
     const sessionMiddleware = session({
@@ -231,6 +229,15 @@ const createApp = async () => {
     app.get('/', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
+
+    // Connect to Redis
+    (async () => {
+        try {
+            await redisClient.connect();
+        } catch (err) {
+            console.error('Failed to connect to Redis:', err);
+        }
+    })();
 
     return app;
 };
