@@ -13,36 +13,33 @@ const PORT = process.env.PORT || 3000;
 // Use an environment variable for the callback URL, with a fallback.
 const CALLBACK_URL = process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback';
 
-// Update Redis client configuration
+// Initialize Redis client with proper error handling
 let redisClient;
-if (process.env.REDIS_URL) {
-    redisClient = createClient({
-        url: process.env.REDIS_URL,
-        socket: {
-            tls: true,
-            rejectUnauthorized: false
-        }
-    });
-} else {
-    redisClient = createClient({
-        url: 'redis://localhost:6379'
-    });
-}
+let sessionMiddleware;
 
-// Add error handling for Redis
-redisClient.on('error', (err) => {
-    console.error('Redis Client Error:', err);
-});
-
-// Connect to Redis with error handling
-(async () => {
+async function initializeRedis() {
     try {
+        redisClient = createClient({
+            url: process.env.REDIS_URL,
+            socket: {
+                tls: true,
+                rejectUnauthorized: false // Required for Heroku Redis
+            }
+        });
+
+        redisClient.on('error', (err) => {
+            console.error('Redis Client Error:', err);
+        });
+
+        redisClient.on('connect', () => {
+            console.log('Successfully connected to Redis');
+        });
+
         await redisClient.connect();
-        console.log('Connected to Redis successfully');
-    } catch (err) {
-        console.error('Failed to connect to Redis:', err);
-        // Fallback to MemoryStore if Redis fails
-        app.use(session({
+        
+        // Initialize session middleware
+        sessionMiddleware = session({
+            store: new RedisStore({ client: redisClient }),
             secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
             resave: false,
             saveUninitialized: false,
@@ -52,45 +49,53 @@ redisClient.on('error', (err) => {
                 maxAge: 24 * 60 * 60 * 1000,
                 sameSite: 'lax'
             }
-        }));
-        return;
+        });
+
+        // Apply middleware after Redis is connected
+        app.use(sessionMiddleware);
+        
+        // Add cookie check middleware
+        app.use((req, res, next) => {
+            console.log('Cookie check:', {
+                cookies: req.cookies,
+                sessionID: req.sessionID,
+                hasSession: !!req.session
+            });
+            next();
+        });
+
+        // Attach authentication status to res.locals
+        app.use((req, res, next) => {
+            res.locals.isAuthenticated = req.session?.isAuthenticated || false;
+            res.locals.user = req.session?.user || null;
+            next();
+        });
+
+        console.log('Redis and session middleware initialized successfully');
+    } catch (err) {
+        console.error('Failed to initialize Redis:', err);
+        // Fallback to MemoryStore if Redis fails
+        sessionMiddleware = session({
+            secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
+            resave: false,
+            saveUninitialized: false,
+            cookie: {
+                secure: process.env.NODE_ENV === 'production',
+                httpOnly: true,
+                maxAge: 24 * 60 * 60 * 1000,
+                sameSite: 'lax'
+            }
+        });
+        app.use(sessionMiddleware);
     }
+}
 
-    // Configure session with Redis
-    app.use(session({
-        store: new RedisStore({ client: redisClient }),
-        secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
-        resave: false,
-        saveUninitialized: false,
-        cookie: {
-            secure: process.env.NODE_ENV === 'production',
-            httpOnly: true,
-            maxAge: 24 * 60 * 60 * 1000,
-            sameSite: 'lax'
-        }
-    }));
-})();
+// Initialize Redis and session middleware
+initializeRedis().catch(console.error);
 
-// Add cookie check middleware
-app.use((req, res, next) => {
-  console.log('Cookie check:', {
-    cookies: req.cookies,
-    sessionID: req.sessionID,
-    hasSession: !!req.session
-  });
-  next();
-});
-
-// Body parsers for JSON and URL-encoded data
+// Body parsers
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Attach authentication status to res.locals (if needed)
-app.use((req, res, next) => {
-  res.locals.isAuthenticated = req.session.isAuthenticated;
-  res.locals.user = req.session.user;
-  next();
-});
 
 // ------------------------
 // Callback Route (Token Exchange)
@@ -201,9 +206,12 @@ app.get('/callback', async (req, res) => {
                 const userInfo = await userInfoResponse.json();
                 console.log('User info retrieved:', userInfo);
 
-                // Set session data
+                // After getting user info
+                if (!req.session) {
+                    throw new Error('Session not initialized');
+                }
+
                 req.session.isAuthenticated = true;
-                req.session.tokens = tokens;
                 req.session.user = {
                     name: `${userInfo.given_name} ${userInfo.family_name}`,
                     email: userInfo.email
@@ -221,7 +229,6 @@ app.get('/callback', async (req, res) => {
                     });
                 });
 
-                // Redirect immediately after session is saved
                 res.redirect('/?auth=success');
             })(),
             timeoutPromise
@@ -240,24 +247,24 @@ app.get('/callback', async (req, res) => {
 // API Routes and other endpoints
 // ------------------------
 app.get('/config', (req, res) => {
-  res.json({
-    oktaIssuer: process.env.OKTA_ISSUER_URL,
-    clientId: process.env.OKTA_CLIENT_ID,
-    isAuthenticated: req.session.isAuthenticated || false,
-    callbackUrl: CALLBACK_URL
-  });
+    res.json({
+        oktaIssuer: process.env.OKTA_ISSUER_URL,
+        clientId: process.env.OKTA_CLIENT_ID,
+        isAuthenticated: req.session?.isAuthenticated || false,
+        callbackUrl: process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback'
+    });
 });
 
 app.get('/auth/status', (req, res) => {
     console.log('Auth status check - Session data:', {
         id: req.sessionID,
-        isAuthenticated: req.session.isAuthenticated,
-        user: req.session.user
+        isAuthenticated: req.session?.isAuthenticated || false,
+        user: req.session?.user || null
     });
     
     res.json({
-        isAuthenticated: !!req.session.isAuthenticated,
-        user: req.session.user || null
+        isAuthenticated: !!req.session?.isAuthenticated,
+        user: req.session?.user || null
     });
 });
 
