@@ -10,13 +10,46 @@ async function login() {
         }
         
         const state = generateSessionId();
-        console.log('Generated state:', state);
+        const codeVerifier = generateCodeVerifier();
+        const codeChallenge = await generateCodeChallenge(codeVerifier);
+        
+        console.log('Generated PKCE values:', {
+            state,
+            hasCodeVerifier: !!codeVerifier,
+            hasCodeChallenge: !!codeChallenge
+        });
 
-        // Simple redirect without PKCE
+        // Save code verifier to session BEFORE redirect
+        const response = await fetch('/auth/pkce', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                code_verifier: codeVerifier,
+                state: state
+            }),
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to store PKCE parameters');
+        }
+
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error('Server failed to save code verifier');
+        }
+
+        console.log('Code verifier saved, proceeding with redirect');
+
+        // Only redirect after confirming code verifier was saved
         await window.authClient.token.getWithRedirect({
             responseType: 'code',
             state: state,
-            scopes: ['openid', 'profile', 'email']
+            scopes: ['openid', 'profile', 'email'],
+            codeChallenge: codeChallenge,
+            codeChallengeMethod: 'S256'
         });
     } catch (error) {
         console.error('Login error:', error);
@@ -114,7 +147,28 @@ async function checkAuthStatus() {
     }
 }
 
-// Update initialization
+// Add back PKCE helper functions
+function generateCodeVerifier() {
+    const array = new Uint8Array(32);
+    window.crypto.getRandomValues(array);
+    return base64URLEncode(array);
+}
+
+function base64URLEncode(buffer) {
+    return btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '');
+}
+
+async function generateCodeChallenge(verifier) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(verifier);
+    const digest = await window.crypto.subtle.digest('SHA-256', data);
+    return base64URLEncode(digest);
+}
+
+// Update initialization to include PKCE
 async function initializeAuth() {
     try {
         const response = await fetch('/config');
@@ -124,12 +178,13 @@ async function initializeAuth() {
         const config = await response.json();
         console.log('Auth config loaded:', config);
 
-        // Initialize Okta Auth without PKCE
+        // Initialize with PKCE enabled
         const authClient = new OktaAuth({
             issuer: config.oktaIssuer,
             clientId: config.clientId,
             redirectUri: config.redirectUri,
             responseType: 'code',
+            pkce: true,  // Ensure PKCE is enabled
             scopes: ['openid', 'profile', 'email']
         });
 
