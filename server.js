@@ -69,18 +69,12 @@ async function initializeServer() {
         app.get('/callback', async (req, res) => {
             try {
                 console.log('=== /callback route hit ===');
-                console.log('Session state:', {
-                    id: req.sessionID,
-                    session: req.session
-                });
-
+                
                 const code = req.query.code;
                 if (!code) {
-                    console.error('No authorization code returned.');
                     throw new Error('No authorization code returned');
                 }
-                console.log('Authorization code received:', code);
-
+                
                 // Build JWT payload for client assertion
                 const now = Math.floor(Date.now() / 1000);
                 const jwtPayload = {
@@ -88,46 +82,28 @@ async function initializeServer() {
                     sub: process.env.OKTA_CLIENT_ID,
                     aud: `${process.env.OKTA_ISSUER_URL}/v1/token`,
                     iat: now,
-                    exp: now + 300, // Token valid for 5 minutes
+                    exp: now + 300,
                     jti: crypto.randomUUID()
                 };
-                console.log('JWT payload:', jwtPayload);
 
-                // Sign the JWT using your private key
+                // Sign the JWT
                 const clientAssertion = jwt.sign(jwtPayload, process.env.PRIVATE_KEY, {
                     algorithm: 'RS256',
                     header: { alg: 'RS256', typ: 'JWT' }
                 });
-                console.log('Generated client assertion JWT:', clientAssertion);
 
-                // Build the token request body
+                // Build token request with PKCE code_verifier
                 const bodyParams = new URLSearchParams({
                     grant_type: 'authorization_code',
                     code: code,
                     redirect_uri: process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback',
                     client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-                    client_assertion: clientAssertion
-                });
-                console.log('Token request body:', bodyParams.toString());
-
-                // Define the token endpoint URL
-                const tokenUrl = `${process.env.OKTA_ISSUER_URL}/v1/token`;
-                console.log('Token endpoint URL:', tokenUrl);
-
-                // Add more logging for the token exchange
-                console.log('Token exchange request:', {
-                    url: tokenUrl,
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'Accept': 'application/json'
-                    },
-                    body: bodyParams.toString()
+                    client_assertion: clientAssertion,
+                    code_verifier: req.session.codeVerifier // This will be set in a moment
                 });
 
-                // Make the token exchange request
-                console.log('Making POST request to token endpoint...');
-                const tokenResponse = await fetch(tokenUrl, {
+                // Token exchange
+                const tokenResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/token`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
@@ -135,56 +111,35 @@ async function initializeServer() {
                     },
                     body: bodyParams
                 });
-                console.log('Token response status:', tokenResponse.status);
-
-                // Log full response details
-                const tokens = await tokenResponse.json();
-                console.log('Token response:', {
-                    status: tokenResponse.status,
-                    headers: Object.fromEntries(tokenResponse.headers),
-                    body: tokens
-                });
 
                 if (!tokenResponse.ok) {
-                    console.error('Token exchange error:', tokens);
-                    throw new Error(tokens.error_description || tokens.error || 'Token exchange failed');
+                    const error = await tokenResponse.json();
+                    throw new Error(error.error_description || error.error || 'Token exchange failed');
                 }
 
-                // Retrieve user info using the access token
-                console.log('Attempting to fetch user info with access token...');
+                const tokens = await tokenResponse.json();
+                
+                // Get user info
                 const userInfoResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/userinfo`, {
                     headers: { 'Authorization': `Bearer ${tokens.access_token}` }
                 });
-                console.log('User info response status:', userInfoResponse.status);
 
                 const userInfo = await userInfoResponse.json();
-                console.log('User info retrieved:', userInfo);
-
-                // After getting user info
-                console.log('Setting session data:', {
-                    isAuthenticated: true,
-                    user: {
-                        name: `${userInfo.given_name} ${userInfo.family_name}`,
-                        email: userInfo.email
-                    }
-                });
-
+                
+                // Set session data
                 req.session.isAuthenticated = true;
                 req.session.user = {
                     name: `${userInfo.given_name} ${userInfo.family_name}`,
                     email: userInfo.email
                 };
 
-                // Save session explicitly
                 await new Promise((resolve, reject) => {
                     req.session.save((err) => {
                         if (err) {
                             console.error('Session save error:', err);
                             reject(err);
-                            return;
+                            resolve();
                         }
-                        console.log('Session saved successfully');
-                        resolve();
                     });
                 });
 
@@ -193,6 +148,17 @@ async function initializeServer() {
                 console.error('Callback error:', error);
                 res.redirect('/?error=' + encodeURIComponent(error.message));
             }
+        });
+
+        // Add a route to handle PKCE code verifier
+        app.post('/auth/pkce', (req, res) => {
+            const { code_verifier } = req.body;
+            if (!code_verifier) {
+                return res.status(400).json({ error: 'Missing code_verifier' });
+            }
+            
+            req.session.codeVerifier = code_verifier;
+            res.json({ success: true });
         });
 
         // Auth status endpoint

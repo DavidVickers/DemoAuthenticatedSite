@@ -3,6 +3,27 @@
 
 let oktaAuth; // Currently not used; remove if not needed.
 
+// Add PKCE helper functions
+function generateCodeVerifier() {
+    const array = new Uint8Array(32);
+    window.crypto.getRandomValues(array);
+    return base64URLEncode(array);
+}
+
+function base64URLEncode(buffer) {
+    return btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '');
+}
+
+async function generateCodeChallenge(verifier) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(verifier);
+    const digest = await window.crypto.subtle.digest('SHA-256', data);
+    return base64URLEncode(digest);
+}
+
 // Login function: builds the authorization URL and redirects the browser to Okta
 async function login() {
   try {
@@ -10,13 +31,20 @@ async function login() {
       throw new Error('Auth client not initialized');
     }
     
-    const state = `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const nonce = Math.random().toString(36).substr(2, 16);
+    const state = generateSessionId();
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = await generateCodeChallenge(codeVerifier);
     
+    // Store code verifier in sessionStorage
+    sessionStorage.setItem('code_verifier', codeVerifier);
+    
+    // Get authorization URL with PKCE
     await window.authClient.token.getWithRedirect({
-      state,
-      nonce,
-      scopes: ['openid', 'profile', 'email']
+      responseType: 'code',
+      state: state,
+      scopes: ['openid', 'profile', 'email'],
+      codeChallenge: codeChallenge,
+      codeChallengeMethod: 'S256'
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -124,19 +152,17 @@ async function initializeAuth() {
     const config = await response.json();
     console.log('Auth config loaded:', config);
 
-    // Initialize Okta Auth
+    // Initialize Okta Auth with PKCE
     const authClient = new OktaAuth({
       issuer: config.oktaIssuer,
       clientId: config.clientId,
       redirectUri: config.redirectUri,
       responseType: 'code',
+      pkce: true,
       scopes: ['openid', 'profile', 'email']
     });
 
-    // Store auth client for later use
     window.authClient = authClient;
-
-    // Check authentication status
     await checkAuthStatus();
   } catch (error) {
     console.error('Error initializing auth:', error);
