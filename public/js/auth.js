@@ -112,7 +112,7 @@ async function checkAuthStatus() {
   }
 }
 
-// Update the initialization code
+// Update the initialization code to remove pkce property completely
 async function initializeAuth() {
   try {
     const response = await fetch('/config');
@@ -122,7 +122,7 @@ async function initializeAuth() {
     const config = await response.json();
     console.log('Auth config loaded:', config);
 
-    // Initialize Okta Auth without any PKCE references
+    // Initialize Okta Auth with minimum required config
     const authClient = new OktaAuth({
       issuer: config.oktaIssuer,
       clientId: config.clientId,
