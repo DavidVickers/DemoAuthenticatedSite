@@ -208,6 +208,17 @@ async function initializeServer() {
             });
         });
 
+        // Config endpoint
+        app.get('/config', (req, res) => {
+            console.log('Config endpoint hit');
+            res.json({
+                oktaIssuer: process.env.OKTA_ISSUER_URL,
+                clientId: process.env.OKTA_CLIENT_ID,
+                redirectUri: process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback',
+                isAuthenticated: !!req.session?.isAuthenticated
+            });
+        });
+
         // Static file serving
         app.use(express.static('public'));
 

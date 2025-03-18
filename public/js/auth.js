@@ -6,55 +6,21 @@ let oktaAuth; // Currently not used; remove if not needed.
 // Login function: builds the authorization URL and redirects the browser to Okta
 async function login() {
   try {
-    console.log('Starting login process...');
-    updateUI(false, null, 'Initiating login...');
-
-    // First check if cookies are enabled
-    if (!navigator.cookieEnabled) {
-      throw new Error('Cookies must be enabled to login');
+    if (!window.authClient) {
+      throw new Error('Auth client not initialized');
     }
-
-    // Fetch configuration from your server
-    const configResponse = await fetch('/config');
-    const config = await configResponse.json();
     
-    console.log('Config received:', {
-      issuer: config.oktaIssuer,
-      clientId: config.clientId,
-      callbackUrl: config.callbackUrl
-    });
-
-    if (!config.oktaIssuer || !config.clientId) {
-      throw new Error('Missing Okta configuration');
-    }
-
-    // Construct the authorization endpoint URL using the full issuer URL
-    const authUrl = new URL(`${config.oktaIssuer}/v1/authorize`);
+    const state = `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const nonce = Math.random().toString(36).substr(2, 16);
     
-    const state = generateSessionId();
-    const params = {
-      client_id: config.clientId,
-      response_type: 'code',
-      scope: 'openid profile email',
-      redirect_uri: config.callbackUrl,
-      state: state,
-      prompt: 'login'  // Force fresh login
-    };
-
-    Object.entries(params).forEach(([key, value]) => {
-      authUrl.searchParams.append(key, value);
+    await window.authClient.token.getWithRedirect({
+      state,
+      nonce,
+      scopes: ['openid', 'profile', 'email']
     });
-
-    const finalUrl = authUrl.toString();
-    console.log('Redirecting to:', finalUrl);
-
-    // Set a cookie to verify they work
-    document.cookie = "okta_test=1; path=/; secure; samesite=lax";
-
-    window.location.assign(finalUrl);
   } catch (error) {
     console.error('Login error:', error);
-    updateUI(false, null, `Login error: ${error.message}`);
+    updateUI(false, null, 'Login failed: ' + error.message);
   }
 }
 
@@ -148,10 +114,40 @@ async function checkAuthStatus() {
   }
 }
 
-// Remove the setInterval and just call checkAuthStatus once when the page loads
+// Update the initialization code
+async function initializeAuth() {
+  try {
+    const response = await fetch('/config');
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const config = await response.json();
+    console.log('Auth config loaded:', config);
+
+    // Initialize Okta Auth
+    const authClient = new OktaAuth({
+      issuer: config.oktaIssuer,
+      clientId: config.clientId,
+      redirectUri: config.redirectUri,
+      responseType: 'code',
+      scopes: ['openid', 'profile', 'email']
+    });
+
+    // Store auth client for later use
+    window.authClient = authClient;
+
+    // Check authentication status
+    await checkAuthStatus();
+  } catch (error) {
+    console.error('Error initializing auth:', error);
+    updateUI(false, null, 'Error initializing authentication');
+  }
+}
+
+// Make sure to initialize when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('Page loaded, checking auth status');
-  checkAuthStatus();
+  console.log('Initializing authentication...');
+  initializeAuth();
 });
 
 // Check auth status when redirected back after login
