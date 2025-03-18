@@ -27,16 +27,35 @@ async function initializeServer() {
 
         // Set up session middleware with Redis
         app.use(session({
-            store: new RedisStore({ client: redisClient }),
+            store: new RedisStore({ 
+                client: redisClient,
+                prefix: 'sess:',
+                disableTouch: false,
+                ttl: 86400 // 24 hours
+            }),
             secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
-            resave: false,
-            saveUninitialized: false,
+            name: 'sessionId',
+            resave: true,  // Changed to true
+            saveUninitialized: true,  // Changed to true
+            rolling: true,
             cookie: {
                 secure: process.env.NODE_ENV === 'production',
                 httpOnly: true,
-                maxAge: 24 * 60 * 60 * 1000
+                maxAge: 24 * 60 * 60 * 1000,
+                sameSite: 'lax'
             }
         }));
+
+        // Add session debugging middleware
+        app.use((req, res, next) => {
+            console.log('Session Debug:', {
+                sessionID: req.sessionID,
+                hasSession: !!req.session,
+                codeVerifier: req.session?.codeVerifier ? 'present' : 'missing',
+                cookie: req.session?.cookie
+            });
+            next();
+        });
 
         // Body parsers
         app.use(express.json());
@@ -44,22 +63,37 @@ async function initializeServer() {
 
         // Routes
         app.post('/auth/pkce', async (req, res) => {
-            const { code_verifier, state } = req.body;
-            if (!code_verifier || !state) {
-                return res.status(400).json({ error: 'Missing PKCE parameters' });
-            }
+            try {
+                const { code_verifier, state } = req.body;
+                if (!code_verifier || !state) {
+                    return res.status(400).json({ error: 'Missing PKCE parameters' });
+                }
 
-            req.session.codeVerifier = code_verifier;
-            req.session.state = state;
-            
-            await new Promise((resolve, reject) => {
-                req.session.save((err) => {
-                    if (err) reject(err);
-                    else resolve();
+                // Set session data
+                req.session.codeVerifier = code_verifier;
+                req.session.state = state;
+                
+                // Force session save and wait for completion
+                await new Promise((resolve, reject) => {
+                    req.session.save((err) => {
+                        if (err) {
+                            console.error('Failed to save session:', err);
+                            reject(err);
+                        } else {
+                            console.log('Session saved successfully:', {
+                                sessionId: req.sessionID,
+                                hasCodeVerifier: !!req.session.codeVerifier
+                            });
+                            resolve();
+                        }
+                    });
                 });
-            });
 
-            res.json({ success: true });
+                res.json({ success: true });
+            } catch (error) {
+                console.error('Error saving PKCE data:', error);
+                res.status(500).json({ error: 'Failed to save PKCE data' });
+            }
         });
 
         // Update callback route to use PKCE
