@@ -69,68 +69,68 @@ async function checkAuth() {
 }
 
 // Update the UI based on authentication status
-function updateUI(isAuthenticated, user = null, message = '') {
-  console.log('Updating UI:', { isAuthenticated, user, message });
-  
-  const loginButton = document.getElementById('login-button');
-  const logoutButton = document.getElementById('logout-button');
-  const userInfoDiv = document.getElementById('user-info-display');
-  const statusDiv = document.getElementById('auth-status');
+function updateUI(isAuthenticated, user = null) {
+    console.log('Updating UI:', { isAuthenticated, user });
+    
+    const loginButton = document.getElementById('login-button');
+    const logoutButton = document.getElementById('logout-button');
+    const userInfoDiv = document.getElementById('user-info-display');
+    const statusDiv = document.getElementById('auth-status');
 
-  if (!loginButton || !logoutButton || !userInfoDiv || !statusDiv) {
-    console.error('Required DOM elements not found');
-    return;
-  }
-
-  if (isAuthenticated && user) {
-    loginButton.style.display = 'none';
-    logoutButton.style.display = 'block';
-    
-    userInfoDiv.innerHTML = `
-      <div class="welcome-message">
-        <h2>Welcome, ${user.name}!</h2>
-        <p>Email: ${user.email}</p>
-      </div>
-    `;
-    userInfoDiv.style.display = 'block';
-    
-    statusDiv.textContent = 'Authenticated';
-    statusDiv.style.backgroundColor = '#dff0d8';
-    statusDiv.style.color = '#3c763d';
-  } else {
-    loginButton.style.display = 'block';
-    logoutButton.style.display = 'none';
-    userInfoDiv.style.display = 'none';
-    userInfoDiv.innerHTML = '';
-    
-    statusDiv.textContent = message || 'Not authenticated';
-    statusDiv.style.backgroundColor = '#f2dede';
-    statusDiv.style.color = '#a94442';
-  }
+    if (isAuthenticated && user) {
+        loginButton.style.display = 'none';
+        logoutButton.style.display = 'block';
+        
+        userInfoDiv.innerHTML = `
+            <div class="welcome-message">
+                <h2>Welcome, ${user.name}!</h2>
+                <p>Email: ${user.email}</p>
+            </div>
+        `;
+        userInfoDiv.style.display = 'block';
+        
+        if (statusDiv) {
+            statusDiv.textContent = 'Authenticated';
+            statusDiv.style.backgroundColor = '#dff0d8';
+            statusDiv.style.color = '#3c763d';
+        }
+    } else {
+        loginButton.style.display = 'block';
+        logoutButton.style.display = 'none';
+        userInfoDiv.style.display = 'none';
+        userInfoDiv.innerHTML = '';
+        
+        if (statusDiv) {
+            statusDiv.textContent = 'Not authenticated';
+            statusDiv.style.backgroundColor = '#f2dede';
+            statusDiv.style.color = '#a94442';
+        }
+    }
 }
 
 // Update checkAuthStatus to handle the UI updates
 async function checkAuthStatus() {
-  try {
-    console.log('Checking auth status...');
-    const response = await fetch('/auth/status');
-    const status = await response.json();
-    console.log('Received auth status:', status);
-    
-    if (status.isAuthenticated && status.user) {
-      console.log('User is authenticated:', status.user);
-      updateUI(true, status.user);
-      if (typeof initializeChat === 'function') {
-        initializeChat();
-      }
-    } else {
-      console.log('User is not authenticated');
-      updateUI(false);
+    try {
+        console.log('Checking auth status...');
+        const response = await fetch('/auth/status');
+        const status = await response.json();
+        console.log('Auth status response:', status);
+        
+        if (status.isAuthenticated && status.user) {
+            console.log('User is authenticated:', status.user);
+            updateUI(true, status.user);
+            if (typeof initializeChat === 'function') {
+                initializeChat();
+            }
+        } else {
+            console.log('User is not authenticated');
+            updateUI(false);
+        }
+    } catch (error) {
+        console.error('Error checking auth status:', error);
+        // Don't show error to user, just update UI as not authenticated
+        updateUI(false);
     }
-  } catch (error) {
-    console.error('Error checking auth status:', error);
-    updateUI(false, null, 'Error checking authentication status');
-  }
 }
 
 // Add PKCE helper functions
@@ -183,12 +183,12 @@ async function initializeAuth() {
 
 // Make sure to initialize when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('Initializing authentication...');
-  initializeAuth();
+    console.log('Page loaded, checking auth status');
+    checkAuthStatus();
 });
 
-// Check auth status when redirected back after login
+// Add event listener for successful auth
 if (window.location.search.includes('auth=success')) {
-  console.log('Auth success detected, checking status');
-  checkAuthStatus();
+    console.log('Auth success detected, checking status');
+    checkAuthStatus();
 }
