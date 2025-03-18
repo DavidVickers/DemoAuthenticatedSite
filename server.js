@@ -13,35 +13,55 @@ const PORT = process.env.PORT || 3000;
 // Use an environment variable for the callback URL, with a fallback.
 const CALLBACK_URL = process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback';
 
-// Initialize Redis client
+// Update Redis client configuration
 let redisClient = createClient({
-    url: process.env.REDIS_URL,
+    url: process.env.REDIS_URL || 'redis://localhost:6379',
     socket: {
-        tls: true,
+        tls: process.env.NODE_ENV === 'production',
         rejectUnauthorized: false
-    }
+    },
+    legacyMode: false
 });
 
-redisClient.on('error', err => console.error('Redis Client Error:', err));
-redisClient.on('connect', () => console.log('Successfully connected to Redis'));
+redisClient.on('error', err => {
+    console.error('Redis Client Error:', err);
+    // Fallback to memory store if Redis fails
+    app.use(session({
+        secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
+        resave: false,
+        saveUninitialized: false,
+        cookie: {
+            secure: process.env.NODE_ENV === 'production',
+            httpOnly: true,
+            maxAge: 24 * 60 * 60 * 1000
+        }
+    }));
+});
+
+redisClient.on('connect', () => {
+    console.log('Successfully connected to Redis at:', process.env.REDIS_URL);
+    // Configure session with Redis
+    app.use(session({
+        store: new RedisStore({ client: redisClient }),
+        secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
+        resave: false,
+        saveUninitialized: false,
+        cookie: {
+            secure: process.env.NODE_ENV === 'production',
+            httpOnly: true,
+            maxAge: 24 * 60 * 60 * 1000
+        }
+    }));
+});
 
 // Connect to Redis
 (async () => {
-    await redisClient.connect();
-})();
-
-// Configure session with Redis
-app.use(session({
-    store: new RedisStore({ client: redisClient }),
-    secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: process.env.NODE_ENV === 'production',
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000
+    try {
+        await redisClient.connect();
+    } catch (err) {
+        console.error('Failed to connect to Redis:', err);
     }
-}));
+})();
 
 // Body parsers
 app.use(express.json());
