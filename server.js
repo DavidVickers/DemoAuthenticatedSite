@@ -40,14 +40,15 @@ async function initializeServer() {
         app.use(session({
             store: new RedisStore({ client: redisClient }),
             secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
-            resave: false,
-            saveUninitialized: false,
+            resave: true,
+            saveUninitialized: true,
             name: 'sessionId',
             cookie: {
                 secure: process.env.NODE_ENV === 'production',
                 httpOnly: true,
                 maxAge: 24 * 60 * 60 * 1000,
-                sameSite: 'lax'
+                sameSite: 'lax',
+                path: '/'
             }
         }));
 
@@ -75,12 +76,6 @@ async function initializeServer() {
                     throw new Error('No authorization code returned');
                 }
 
-                // Get code verifier from session
-                const codeVerifier = req.session.codeVerifier;
-                if (!codeVerifier) {
-                    throw new Error('PKCE code verifier not found in session');
-                }
-
                 // Build JWT payload for client assertion
                 const now = Math.floor(Date.now() / 1000);
                 const jwtPayload = {
@@ -98,14 +93,13 @@ async function initializeServer() {
                     header: { alg: 'RS256', typ: 'JWT' }
                 });
 
-                // Build token request with PKCE code_verifier
+                // Build token request WITHOUT PKCE
                 const bodyParams = new URLSearchParams({
                     grant_type: 'authorization_code',
                     code: code,
                     redirect_uri: process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback',
                     client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-                    client_assertion: clientAssertion,
-                    code_verifier: codeVerifier
+                    client_assertion: clientAssertion
                 });
 
                 // Token exchange
@@ -144,8 +138,8 @@ async function initializeServer() {
                         if (err) {
                             console.error('Session save error:', err);
                             reject(err);
-                            resolve();
                         }
+                        resolve();
                     });
                 });
 
@@ -154,17 +148,6 @@ async function initializeServer() {
                 console.error('Callback error:', error);
                 res.redirect('/?error=' + encodeURIComponent(error.message));
             }
-        });
-
-        // Add a route to handle PKCE code verifier
-        app.post('/auth/pkce', (req, res) => {
-            const { code_verifier } = req.body;
-            if (!code_verifier) {
-                return res.status(400).json({ error: 'Missing code_verifier' });
-            }
-            
-            req.session.codeVerifier = code_verifier;
-            res.json({ success: true });
         });
 
         // Auth status endpoint
