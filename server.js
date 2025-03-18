@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 // Use an environment variable for the callback URL, with a fallback.
 const CALLBACK_URL = process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback';
 
-// Remove all Redis-related code and use simple session configuration
+// Simple session configuration without Redis
 app.use(session({
     secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
     resave: false,
@@ -27,7 +27,7 @@ app.use(session({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Callback route
+// Callback route without PKCE
 app.get('/callback', async (req, res) => {
     try {
         console.log('=== /callback route hit ===');
@@ -37,7 +37,6 @@ app.get('/callback', async (req, res) => {
             throw new Error('No authorization code returned');
         }
 
-        // Build JWT payload for client assertion
         const now = Math.floor(Date.now() / 1000);
         const jwtPayload = {
             iss: process.env.OKTA_CLIENT_ID,
@@ -48,13 +47,12 @@ app.get('/callback', async (req, res) => {
             jti: crypto.randomUUID()
         };
 
-        // Sign the JWT
         const clientAssertion = jwt.sign(jwtPayload, process.env.PRIVATE_KEY, {
             algorithm: 'RS256',
             header: { alg: 'RS256', typ: 'JWT' }
         });
 
-        // Build token request WITHOUT any PKCE parameters
+        // Token exchange without PKCE
         const bodyParams = new URLSearchParams({
             grant_type: 'authorization_code',
             code: code,
@@ -63,12 +61,10 @@ app.get('/callback', async (req, res) => {
             client_assertion: clientAssertion
         });
 
-        // Token exchange
         const tokenResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/token`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Accept': 'application/json'
+                'Content-Type': 'application/x-www-form-urlencoded'
             },
             body: bodyParams
         });
@@ -87,22 +83,11 @@ app.get('/callback', async (req, res) => {
 
         const userInfo = await userInfoResponse.json();
         
-        // Set session data
         req.session.isAuthenticated = true;
         req.session.user = {
             name: `${userInfo.given_name} ${userInfo.family_name}`,
             email: userInfo.email
         };
-
-        await new Promise((resolve, reject) => {
-            req.session.save((err) => {
-                if (err) {
-                    console.error('Session save error:', err);
-                    reject(err);
-                }
-                resolve();
-            });
-        });
 
         res.redirect('/?auth=success');
     } catch (error) {
