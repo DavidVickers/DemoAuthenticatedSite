@@ -16,9 +16,11 @@ const createApp = async () => {
         url: process.env.REDIS_URL,
         socket: {
             tls: process.env.NODE_ENV === 'production',
-            rejectUnauthorized: false
+            rejectUnauthorized: false,
+            connectTimeout: 10000,
+            keepAlive: 5000
         },
-        legacyMode: false
+        commandTimeout: 5000
     });
 
     // Set up Redis error handling
@@ -91,43 +93,19 @@ const createApp = async () => {
             // Set session data
             req.session.codeVerifier = code_verifier;
             req.session.state = state;
-            req.session.timestamp = Date.now(); // Add timestamp for debugging
             
-            // Force session save and wait for completion
-            await new Promise((resolve, reject) => {
-                req.session.save((err) => {
-                    if (err) {
-                        console.error('Failed to save session:', err);
-                        reject(err);
-                    } else {
-                        console.log('Session saved successfully:', {
-                            sessionId: req.sessionID,
-                            hasCodeVerifier: !!req.session.codeVerifier,
-                            timestamp: req.session.timestamp
-                        });
-                        resolve();
-                    }
-                });
-            });
-
-            // Verify session was saved
-            const savedSession = await new Promise((resolve) => {
-                redisClient.get(`sess:${req.sessionID}`, (err, data) => {
-                    if (err) {
-                        console.error('Failed to verify session:', err);
-                        resolve(null);
-                    } else {
-                        resolve(data);
-                    }
-                });
-            });
-
-            console.log('Verified session data:', savedSession);
-
-            res.json({ 
-                success: true, 
-                sessionId: req.sessionID,
-                timestamp: req.session.timestamp
+            // Save session and respond immediately
+            req.session.save((err) => {
+                if (err) {
+                    console.error('Failed to save session:', err);
+                    res.status(500).json({ error: 'Failed to save PKCE data' });
+                } else {
+                    console.log('Session saved:', {
+                        sessionId: req.sessionID,
+                        hasCodeVerifier: true
+                    });
+                    res.json({ success: true });
+                }
             });
         } catch (error) {
             console.error('Error saving PKCE data:', error);
