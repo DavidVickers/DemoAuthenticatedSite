@@ -74,7 +74,13 @@ async function initializeServer() {
                 if (!code) {
                     throw new Error('No authorization code returned');
                 }
-                
+
+                // Get code verifier from session
+                const codeVerifier = req.session.codeVerifier;
+                if (!codeVerifier) {
+                    throw new Error('PKCE code verifier not found in session');
+                }
+
                 // Build JWT payload for client assertion
                 const now = Math.floor(Date.now() / 1000);
                 const jwtPayload = {
@@ -98,7 +104,8 @@ async function initializeServer() {
                     code: code,
                     redirect_uri: process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback',
                     client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-                    client_assertion: clientAssertion
+                    client_assertion: clientAssertion,
+                    code_verifier: codeVerifier
                 });
 
                 // Token exchange

@@ -38,14 +38,18 @@ async function login() {
     // Store code verifier in sessionStorage
     sessionStorage.setItem('code_verifier', codeVerifier);
     
-    // Send code verifier to server
-    await fetch('/auth/pkce', {
+    // Send code verifier to server before redirect
+    const response = await fetch('/auth/pkce', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ code_verifier: codeVerifier })
     });
+
+    if (!response.ok) {
+      throw new Error('Failed to store code verifier');
+    }
     
     // Get authorization URL with PKCE
     await window.authClient.token.getWithRedirect({
@@ -161,13 +165,13 @@ async function initializeAuth() {
     const config = await response.json();
     console.log('Auth config loaded:', config);
 
-    // Initialize Okta Auth without PKCE
+    // Initialize Okta Auth with PKCE enabled
     const authClient = new OktaAuth({
       issuer: config.oktaIssuer,
       clientId: config.clientId,
       redirectUri: config.redirectUri,
       responseType: 'code',
-      pkce: false,  // Disable PKCE
+      pkce: true,  // Enable PKCE
       scopes: ['openid', 'profile', 'email']
     });
 
