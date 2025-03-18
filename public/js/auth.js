@@ -12,7 +12,7 @@ async function login() {
         const state = generateSessionId();
         console.log('Generated state:', state);
 
-        // Redirect to Okta without PKCE
+        // Simple redirect without PKCE
         await window.authClient.token.getWithRedirect({
             responseType: 'code',
             state: state,
@@ -114,27 +114,6 @@ async function checkAuthStatus() {
     }
 }
 
-// Add PKCE helper functions
-function generateCodeVerifier() {
-    const array = new Uint8Array(32);
-    window.crypto.getRandomValues(array);
-    return base64URLEncode(array);
-}
-
-function base64URLEncode(buffer) {
-    return btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)))
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=/g, '');
-}
-
-async function generateCodeChallenge(verifier) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(verifier);
-    const digest = await window.crypto.subtle.digest('SHA-256', data);
-    return base64URLEncode(digest);
-}
-
 // Update initialization
 async function initializeAuth() {
     try {
@@ -145,12 +124,12 @@ async function initializeAuth() {
         const config = await response.json();
         console.log('Auth config loaded:', config);
 
+        // Initialize Okta Auth without PKCE
         const authClient = new OktaAuth({
             issuer: config.oktaIssuer,
             clientId: config.clientId,
             redirectUri: config.redirectUri,
             responseType: 'code',
-            pkce: true,
             scopes: ['openid', 'profile', 'email']
         });
 
@@ -162,26 +141,30 @@ async function initializeAuth() {
     }
 }
 
-// Add event listeners for buttons
+// Update DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Page loaded, setting up event listeners');
+    console.log('Page loaded, initializing auth...');
     
-    // Add login button click handler
-    const loginButton = document.getElementById('login-button');
-    if (loginButton) {
-        loginButton.addEventListener('click', login);
-        console.log('Login button handler attached');
-    }
+    // Initialize auth first
+    initializeAuth().then(() => {
+        console.log('Auth initialized, setting up event listeners');
+        
+        // Add login button click handler
+        const loginButton = document.getElementById('login-button');
+        if (loginButton) {
+            loginButton.addEventListener('click', login);
+            console.log('Login button handler attached');
+        }
 
-    // Add logout button click handler
-    const logoutButton = document.getElementById('logout-button');
-    if (logoutButton) {
-        logoutButton.addEventListener('click', logout);
-        console.log('Logout button handler attached');
-    }
-
-    // Initial auth check
-    checkAuthStatus();
+        // Add logout button click handler
+        const logoutButton = document.getElementById('logout-button');
+        if (logoutButton) {
+            logoutButton.addEventListener('click', logout);
+            console.log('Logout button handler attached');
+        }
+    }).catch(error => {
+        console.error('Failed to initialize auth:', error);
+    });
 });
 
 // Add event listener for successful auth
