@@ -4,38 +4,19 @@
 // Login function: builds the authorization URL and redirects the browser to Okta
 async function login() {
     try {
+        console.log('Login clicked');
         if (!window.authClient) {
             throw new Error('Auth client not initialized');
         }
         
         const state = generateSessionId();
-        const codeVerifier = generateCodeVerifier();
-        const codeChallenge = await generateCodeChallenge(codeVerifier);
-        
-        // Store PKCE values in server session
-        const response = await fetch('/auth/pkce', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                code_verifier: codeVerifier,
-                state: state
-            }),
-            credentials: 'same-origin'
-        });
+        console.log('Generated state:', state);
 
-        if (!response.ok) {
-            throw new Error('Failed to store PKCE parameters');
-        }
-
-        // Redirect to Okta
+        // Redirect to Okta without PKCE
         await window.authClient.token.getWithRedirect({
             responseType: 'code',
             state: state,
-            scopes: ['openid', 'profile', 'email'],
-            codeChallenge: codeChallenge,
-            codeChallengeMethod: 'S256'
+            scopes: ['openid', 'profile', 'email']
         });
     } catch (error) {
         console.error('Login error:', error);
@@ -181,9 +162,25 @@ async function initializeAuth() {
     }
 }
 
-// Make sure to initialize when the page loads
+// Add event listeners for buttons
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Page loaded, checking auth status');
+    console.log('Page loaded, setting up event listeners');
+    
+    // Add login button click handler
+    const loginButton = document.getElementById('login-button');
+    if (loginButton) {
+        loginButton.addEventListener('click', login);
+        console.log('Login button handler attached');
+    }
+
+    // Add logout button click handler
+    const logoutButton = document.getElementById('logout-button');
+    if (logoutButton) {
+        logoutButton.addEventListener('click', logout);
+        console.log('Logout button handler attached');
+    }
+
+    // Initial auth check
     checkAuthStatus();
 });
 
