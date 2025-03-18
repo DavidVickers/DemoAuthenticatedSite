@@ -3,27 +3,6 @@
 
 let oktaAuth; // Currently not used; remove if not needed.
 
-// Initialize authentication status when the page loads
-async function initializeAuth() {
-  try {
-    const response = await fetch('/auth/status');
-    const authStatus = await response.json();
-    
-    if (authStatus.isAuthenticated) {
-      console.log('User is authenticated:', authStatus.user);
-      updateUI(true, authStatus.user);
-      initializeChat();
-    } else {
-      updateUI(false);
-    }
-  } catch (error) {
-    console.error('Failed to check auth status:', error);
-    updateUI(false, null, error.message);
-  }
-}
-
-initializeAuth();
-
 // Login function: builds the authorization URL and redirects the browser to Okta
 async function login() {
   try {
@@ -108,7 +87,7 @@ async function checkAuth() {
 function updateUI(isAuthenticated, user = null, message = '') {
   const loginButton = document.getElementById('login-button');
   const logoutButton = document.getElementById('logout-button');
-  const userInfoDiv = document.getElementById('user-info');
+  const userInfoDiv = document.getElementById('user-info-display');
   const statusDiv = document.getElementById('auth-status');
 
   if (isAuthenticated && user) {
@@ -145,7 +124,7 @@ function updateUI(isAuthenticated, user = null, message = '') {
   }
 }
 
-// Add function to check auth status
+// Update checkAuthStatus to handle the UI updates
 async function checkAuthStatus() {
   try {
     const response = await fetch('/auth/status');
@@ -154,6 +133,10 @@ async function checkAuthStatus() {
     
     if (status.isAuthenticated && status.user) {
       updateUI(true, status.user);
+      // Initialize chat if needed
+      if (typeof initializeChat === 'function') {
+        initializeChat();
+      }
     } else {
       updateUI(false);
     }
@@ -163,8 +146,7 @@ async function checkAuthStatus() {
   }
 }
 
-// Call checkAuthStatus periodically
-setInterval(checkAuthStatus, 5000);
-
-// Call it immediately when page loads
-document.addEventListener('DOMContentLoaded', checkAuthStatus);
+// Remove the setInterval and just call checkAuthStatus once when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+  checkAuthStatus();
+});
