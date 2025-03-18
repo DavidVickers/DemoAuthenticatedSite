@@ -108,22 +108,35 @@ async function checkAuth() {
 function updateUI(isAuthenticated, user = null, message = '') {
   const loginButton = document.getElementById('login-button');
   const logoutButton = document.getElementById('logout-button');
-  const username = document.getElementById('username');
+  const userInfoDiv = document.getElementById('user-info');
   const statusDiv = document.getElementById('auth-status');
 
-  if (isAuthenticated) {
+  if (isAuthenticated && user) {
+    // Hide login, show logout
     loginButton.style.display = 'none';
     logoutButton.style.display = 'block';
-    username.textContent = user ? `Welcome, ${user.name}!` : 'Welcome!';
+
+    // Update user info display
+    userInfoDiv.innerHTML = `
+      <div class="welcome-message">
+        <h2>Welcome, ${user.name}!</h2>
+        <p>Email: ${user.email}</p>
+      </div>
+    `;
+    userInfoDiv.style.display = 'block';
+
     if (statusDiv) {
       statusDiv.textContent = 'Authenticated';
       statusDiv.style.backgroundColor = '#dff0d8';
       statusDiv.style.color = '#3c763d';
     }
   } else {
+    // Show login, hide logout
     loginButton.style.display = 'block';
     logoutButton.style.display = 'none';
-    username.textContent = '';
+    userInfoDiv.style.display = 'none';
+    userInfoDiv.innerHTML = '';
+
     if (statusDiv) {
       statusDiv.textContent = message || 'Not authenticated';
       statusDiv.style.backgroundColor = '#f2dede';
@@ -131,3 +144,27 @@ function updateUI(isAuthenticated, user = null, message = '') {
     }
   }
 }
+
+// Add function to check auth status
+async function checkAuthStatus() {
+  try {
+    const response = await fetch('/auth/status');
+    const status = await response.json();
+    console.log('Auth status:', status);
+    
+    if (status.isAuthenticated && status.user) {
+      updateUI(true, status.user);
+    } else {
+      updateUI(false);
+    }
+  } catch (error) {
+    console.error('Error checking auth status:', error);
+    updateUI(false, null, 'Error checking authentication status');
+  }
+}
+
+// Call checkAuthStatus periodically
+setInterval(checkAuthStatus, 5000);
+
+// Call it immediately when page loads
+document.addEventListener('DOMContentLoaded', checkAuthStatus);

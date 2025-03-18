@@ -24,6 +24,8 @@
     </div>
   </header>
 
+  <div id="user-info" style="display: none;" class="user-info-container"></div>
+
   <main>
     <div class="content">
       <h2>Demo Content</h2>
@@ -38,5 +40,30 @@
   <!-- Client-side scripts -->
   <script src="js/auth.js"></script>
   <script src="js/chat.js"></script>
+
+  <style>
+    .user-info-container {
+        padding: 20px;
+        margin: 20px;
+        border-radius: 5px;
+        background-color: #f8f9fa;
+    }
+
+    .welcome-message {
+        text-align: center;
+    }
+
+    .welcome-message h2 {
+        color: #28a745;
+        margin-bottom: 10px;
+    }
+
+    #auth-status {
+        padding: 10px;
+        margin: 10px;
+        border-radius: 4px;
+        text-align: center;
+    }
+  </style>
 </body>
 </html>

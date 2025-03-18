@@ -146,7 +146,11 @@ app.get('/callback', async (req, res) => {
     // Store tokens and user info in session
     req.session.isAuthenticated = true;
     req.session.tokens = tokens;
-    req.session.user = userInfo;
+    req.session.user = {
+        name: `${userInfo.given_name} ${userInfo.family_name}`,
+        email: userInfo.email,
+        // Add any other user info you want to display
+    };
 
     console.log('Saving session with tokens and user info...');
     req.session.save((err) => {
@@ -181,10 +185,15 @@ app.get('/config', (req, res) => {
 });
 
 app.get('/auth/status', (req, res) => {
-  res.json({
-    isAuthenticated: req.session.isAuthenticated || false,
-    user: req.session.user || null
-  });
+    console.log('Session state:', {
+        isAuthenticated: req.session.isAuthenticated,
+        user: req.session.user
+    });
+    
+    res.json({
+        isAuthenticated: req.session.isAuthenticated || false,
+        user: req.session.user || null
+    });
 });
 
 app.get('/auth/logout', (req, res) => {
