@@ -4,6 +4,8 @@ const jwt = require('jsonwebtoken');
 const fetch = require('node-fetch');
 const crypto = require('crypto');
 const session = require('express-session');
+const RedisStore = require('connect-redis').default;
+const { createClient } = require('redis');
 const app = express();
 require('dotenv').config();
 //help
@@ -11,8 +13,26 @@ const PORT = process.env.PORT || 3000;
 // Use an environment variable for the callback URL, with a fallback.
 const CALLBACK_URL = process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback';
 
-// Simple session configuration without Redis
+// Initialize Redis client
+let redisClient = createClient({
+    url: process.env.REDIS_URL,
+    socket: {
+        tls: true,
+        rejectUnauthorized: false
+    }
+});
+
+redisClient.on('error', err => console.error('Redis Client Error:', err));
+redisClient.on('connect', () => console.log('Successfully connected to Redis'));
+
+// Connect to Redis
+(async () => {
+    await redisClient.connect();
+})();
+
+// Configure session with Redis
 app.use(session({
+    store: new RedisStore({ client: redisClient }),
     secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
     resave: false,
     saveUninitialized: false,
@@ -27,14 +47,40 @@ app.use(session({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Callback route without PKCE
+// Add PKCE storage endpoint
+app.post('/auth/pkce', async (req, res) => {
+    const { code_verifier, state } = req.body;
+    if (!code_verifier || !state) {
+        return res.status(400).json({ error: 'Missing PKCE parameters' });
+    }
+
+    req.session.codeVerifier = code_verifier;
+    req.session.state = state;
+    
+    await new Promise((resolve, reject) => {
+        req.session.save((err) => {
+            if (err) reject(err);
+            else resolve();
+        });
+    });
+
+    res.json({ success: true });
+});
+
+// Update callback route to use PKCE
 app.get('/callback', async (req, res) => {
     try {
         console.log('=== /callback route hit ===');
         
         const code = req.query.code;
+        const state = req.query.state;
+
         if (!code) {
             throw new Error('No authorization code returned');
+        }
+
+        if (!req.session.codeVerifier) {
+            throw new Error('PKCE code verifier not found in session');
         }
 
         const now = Math.floor(Date.now() / 1000);
@@ -52,13 +98,14 @@ app.get('/callback', async (req, res) => {
             header: { alg: 'RS256', typ: 'JWT' }
         });
 
-        // Token exchange without PKCE
+        // Token exchange with PKCE
         const bodyParams = new URLSearchParams({
             grant_type: 'authorization_code',
             code: code,
             redirect_uri: process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback',
             client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-            client_assertion: clientAssertion
+            client_assertion: clientAssertion,
+            code_verifier: req.session.codeVerifier
         });
 
         const tokenResponse = await fetch(`${process.env.OKTA_ISSUER_URL}/v1/token`, {
@@ -88,6 +135,16 @@ app.get('/callback', async (req, res) => {
             name: `${userInfo.given_name} ${userInfo.family_name}`,
             email: userInfo.email
         };
+
+        // Clear PKCE verifier after successful authentication
+        delete req.session.codeVerifier;
+        
+        await new Promise((resolve, reject) => {
+            req.session.save((err) => {
+                if (err) reject(err);
+                else resolve();
+            });
+        });
 
         res.redirect('/?auth=success');
     } catch (error) {

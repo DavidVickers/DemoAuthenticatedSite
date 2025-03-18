@@ -8,10 +8,34 @@ async function login() {
             throw new Error('Auth client not initialized');
         }
         
+        const state = generateSessionId();
+        const codeVerifier = generateCodeVerifier();
+        const codeChallenge = await generateCodeChallenge(codeVerifier);
+        
+        // Store PKCE values in server session
+        const response = await fetch('/auth/pkce', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                code_verifier: codeVerifier,
+                state: state
+            }),
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to store PKCE parameters');
+        }
+
+        // Redirect to Okta
         await window.authClient.token.getWithRedirect({
             responseType: 'code',
-            state: generateSessionId(),
-            scopes: ['openid', 'profile', 'email']
+            state: state,
+            scopes: ['openid', 'profile', 'email'],
+            codeChallenge: codeChallenge,
+            codeChallengeMethod: 'S256'
         });
     } catch (error) {
         console.error('Login error:', error);
@@ -109,7 +133,28 @@ async function checkAuthStatus() {
   }
 }
 
-// Update the initialization code
+// Add PKCE helper functions
+function generateCodeVerifier() {
+    const array = new Uint8Array(32);
+    window.crypto.getRandomValues(array);
+    return base64URLEncode(array);
+}
+
+function base64URLEncode(buffer) {
+    return btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '');
+}
+
+async function generateCodeChallenge(verifier) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(verifier);
+    const digest = await window.crypto.subtle.digest('SHA-256', data);
+    return base64URLEncode(digest);
+}
+
+// Update initialization
 async function initializeAuth() {
     try {
         const response = await fetch('/config');
@@ -119,12 +164,12 @@ async function initializeAuth() {
         const config = await response.json();
         console.log('Auth config loaded:', config);
 
-        // Initialize Okta Auth with basic OAuth config
         const authClient = new OktaAuth({
             issuer: config.oktaIssuer,
             clientId: config.clientId,
             redirectUri: config.redirectUri,
             responseType: 'code',
+            pkce: true,
             scopes: ['openid', 'profile', 'email']
         });
 
