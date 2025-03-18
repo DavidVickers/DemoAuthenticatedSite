@@ -13,8 +13,8 @@ const CALLBACK_URL = process.env.CALLBACK_URL || 'https://vickers-demo-site-d333
 
 // Configure session middleware FIRST
 app.use(session({
-  secret: crypto.randomBytes(32).toString('hex'),
-  resave: false,
+  secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
+  resave: true,
   saveUninitialized: true,
   // For production HTTPS, secure should be true. For local testing, set it to false.
   cookie: {
@@ -22,7 +22,8 @@ app.use(session({
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
     sameSite: 'lax'  // Added to help with cross-site cookie issues
-  }
+  },
+  name: 'sessionId'  // Added explicit name
 }));
 
 // Add cookie check middleware
@@ -148,18 +149,18 @@ app.get('/callback', async (req, res) => {
     req.session.tokens = tokens;
     req.session.user = {
         name: `${userInfo.given_name} ${userInfo.family_name}`,
-        email: userInfo.email,
-        // Add any other user info you want to display
+        email: userInfo.email
     };
 
-    console.log('Saving session with tokens and user info...');
+    // Force session save
     req.session.save((err) => {
-      if (err) {
-        console.error('Session save error:', err);
-        return res.redirect('/?error=' + encodeURIComponent('Session save failed'));
-      }
-      console.log('Session saved successfully, redirecting to home page.');
-      res.redirect('/');
+        if (err) {
+            console.error('Session save error:', err);
+            return res.redirect('/?error=session_save_failed');
+        }
+        
+        // Add a query parameter to trigger immediate auth check
+        res.redirect('/?auth=success');
     });
 
   } catch (error) {
@@ -185,14 +186,16 @@ app.get('/config', (req, res) => {
 });
 
 app.get('/auth/status', (req, res) => {
-    console.log('Session state:', {
-        isAuthenticated: req.session.isAuthenticated,
-        user: req.session.user
-    });
+    console.log('Full session data:', req.session);
+    
+    const isAuthenticated = !!req.session.isAuthenticated;
+    const user = req.session.user || null;
+    
+    console.log('Sending auth status:', { isAuthenticated, user });
     
     res.json({
-        isAuthenticated: req.session.isAuthenticated || false,
-        user: req.session.user || null
+        isAuthenticated: isAuthenticated,
+        user: user
     });
 });
 

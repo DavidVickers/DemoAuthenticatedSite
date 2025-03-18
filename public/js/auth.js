@@ -85,6 +85,8 @@ async function checkAuth() {
 
 // Update the UI based on authentication status
 function updateUI(isAuthenticated, user = null, message = '') {
+  console.log('Updating UI:', { isAuthenticated, user, message });
+  
   const loginButton = document.getElementById('login-button');
   const logoutButton = document.getElementById('logout-button');
   const userInfoDiv = document.getElementById('user-info-display');
@@ -127,17 +129,19 @@ function updateUI(isAuthenticated, user = null, message = '') {
 // Update checkAuthStatus to handle the UI updates
 async function checkAuthStatus() {
   try {
+    console.log('Checking auth status...');
     const response = await fetch('/auth/status');
     const status = await response.json();
-    console.log('Auth status:', status);
+    console.log('Received auth status:', status);
     
     if (status.isAuthenticated && status.user) {
+      console.log('User is authenticated:', status.user);
       updateUI(true, status.user);
-      // Initialize chat if needed
       if (typeof initializeChat === 'function') {
         initializeChat();
       }
     } else {
+      console.log('User is not authenticated');
       updateUI(false);
     }
   } catch (error) {
@@ -148,5 +152,12 @@ async function checkAuthStatus() {
 
 // Remove the setInterval and just call checkAuthStatus once when the page loads
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('Page loaded, checking auth status');
   checkAuthStatus();
 });
+
+// Check auth status when redirected back after login
+if (window.location.search.includes('auth=success')) {
+  console.log('Auth success detected, checking status');
+  checkAuthStatus();
+}
