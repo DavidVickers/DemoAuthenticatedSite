@@ -115,7 +115,7 @@ function updateUI(isAuthenticated, user = null) {
     }
 }
 
-// Update checkAuthStatus to handle the UI updates
+// Update checkAuthStatus function to handle chat initialization more safely
 async function checkAuthStatus() {
     try {
         console.log('Checking auth status...');
@@ -126,8 +126,15 @@ async function checkAuthStatus() {
         if (status.isAuthenticated && status.user) {
             console.log('User is authenticated:', status.user);
             updateUI(true, status.user);
-            if (typeof initializeChat === 'function') {
-                initializeChat();
+            
+            // Only try to initialize chat if the function exists and we're on the main page
+            if (typeof initializeChat === 'function' && !window.location.search.includes('auth=success')) {
+                try {
+                    await initializeChat();
+                } catch (chatError) {
+                    console.warn('Chat initialization failed:', chatError);
+                    // Continue with auth flow even if chat fails
+                }
             }
         } else {
             console.log('User is not authenticated');
@@ -202,7 +209,7 @@ async function initializeAuth() {
     }
 }
 
-// Update the initialization code
+// Update the DOMContentLoaded handler
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Page loaded, checking URL parameters...');
     
@@ -213,26 +220,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             const response = await fetch('/auth/status');
             const status = await response.json();
             
-            // Store auth status in sessionStorage
-            sessionStorage.setItem('authStatus', JSON.stringify(status));
+            // Update UI immediately with the user info
+            updateUI(status.isAuthenticated, status.user);
             
-            // Redirect to home page without the auth parameter
-            window.location.replace('/');
-            return;
+            // Remove the auth=success parameter from URL without reloading
+            const newUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, newUrl);
         } catch (error) {
             console.error('Error fetching auth status:', error);
+            updateUI(false);
         }
-    } else {
-        // Check if we have stored auth status
-        const storedStatus = sessionStorage.getItem('authStatus');
-        if (storedStatus) {
-            console.log('Found stored auth status');
-            const status = JSON.parse(storedStatus);
-            updateUI(status.isAuthenticated, status.user);
-            sessionStorage.removeItem('authStatus'); // Clear it after use
-        }
-        
-        // Initialize auth
-        initializeAuth();
     }
+    
+    // Initialize auth in all cases
+    initializeAuth();
 });
