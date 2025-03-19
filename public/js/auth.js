@@ -19,7 +19,7 @@ async function login() {
             hasCodeChallenge: !!codeChallenge
         });
 
-        // Save code verifier to session BEFORE redirect
+        // Store code verifier in session
         const response = await fetch('/auth/pkce', {
             method: 'POST',
             headers: {
@@ -36,14 +36,7 @@ async function login() {
             throw new Error('Failed to store PKCE parameters');
         }
 
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error('Server failed to save code verifier');
-        }
-
-        console.log('Code verifier saved, proceeding with redirect');
-
-        // Only redirect after confirming code verifier was saved
+        // Redirect with PKCE
         await window.authClient.token.getWithRedirect({
             responseType: 'code',
             state: state,
@@ -184,12 +177,25 @@ async function initializeAuth() {
             clientId: config.clientId,
             redirectUri: config.redirectUri,
             responseType: 'code',
-            pkce: true,  // Ensure PKCE is enabled
+            pkce: true,
             scopes: ['openid', 'profile', 'email']
         });
 
         window.authClient = authClient;
         await checkAuthStatus();
+
+        // Add click handlers after initialization
+        const loginButton = document.getElementById('login-button');
+        if (loginButton) {
+            loginButton.addEventListener('click', login);
+            console.log('Login button handler attached');
+        }
+
+        const logoutButton = document.getElementById('logout-button');
+        if (logoutButton) {
+            logoutButton.addEventListener('click', logout);
+            console.log('Logout button handler attached');
+        }
     } catch (error) {
         console.error('Error initializing auth:', error);
         updateUI(false, null, 'Error initializing authentication');
@@ -214,16 +220,11 @@ async function handleAuthSuccess() {
 
 // Update the initialization code
 document.addEventListener('DOMContentLoaded', () => {
-    // Check if we're on the /auth/success page
-    if (window.location.pathname === '/auth/success') {
-        handleAuthSuccess();
-    } else {
-        // Normal initialization
-        initializeAuth();
-    }
+    console.log('Page loaded, initializing auth...');
+    initializeAuth();
 });
 
-// Add event listener for successful auth
+// Check auth status after successful login
 if (window.location.search.includes('auth=success')) {
     console.log('Auth success detected, checking status');
     checkAuthStatus();

@@ -140,11 +140,8 @@ const createApp = async () => {
     app.get('/callback', async (req, res) => {
         try {
             console.log('=== /callback route hit ===');
-            console.log('Session data:', req.session);
             
             const code = req.query.code;
-            const state = req.query.state;
-
             if (!code) {
                 throw new Error('No authorization code returned');
             }
@@ -216,7 +213,8 @@ const createApp = async () => {
                 });
             });
 
-            res.redirect('/auth/success');
+            // After successful authentication, redirect to home
+            res.redirect('/?auth=success');
         } catch (error) {
             console.error('Callback error:', error);
             res.redirect('/?error=' + encodeURIComponent(error.message));
