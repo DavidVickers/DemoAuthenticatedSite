@@ -202,14 +202,38 @@ const createApp = async () => {
                 name: `${userInfo.given_name} ${userInfo.family_name}`,
                 email: userInfo.email
             };
+            
+            // NEW CODE: Store JWT tokens from Okta in the session
+            // This allows us to pass the id_token to Salesforce for user verification
+            // The id_token is a JWT that Salesforce can use to verify the user's identity
+            req.session.salesforceJwt = tokens.id_token;  // Store id_token for Salesforce chat verification
+            req.session.accessToken = tokens.access_token; // Store access_token in case needed for other API calls
+            
+            // NEW CODE: Added logging to help debug token storage
+            // Logs presence of tokens without exposing sensitive token content
+            console.log('Stored tokens in session:', {
+                hasIdToken: !!tokens.id_token,
+                hasAccessToken: !!tokens.access_token
+            });
 
             // Clear PKCE verifier after successful authentication
             delete req.session.codeVerifier;
             
+            // Save session with additional logging for token storage
             await new Promise((resolve, reject) => {
                 req.session.save((err) => {
-                    if (err) reject(err);
-                    else resolve();
+                    if (err) {
+                        // NEW CODE: Enhanced error logging specific to token storage
+                        console.error('Failed to save session with tokens:', err);
+                        reject(err);
+                    } else {
+                        // NEW CODE: Enhanced success logging to confirm tokens were saved
+                        console.log('Session saved with tokens:', {
+                            sessionId: req.sessionID,
+                            hasTokens: true
+                        });
+                        resolve();
+                    }
                 });
             });
 
@@ -219,6 +243,31 @@ const createApp = async () => {
             console.error('Callback error:', error);
             res.redirect('/?error=' + encodeURIComponent(error.message));
         }
+    });
+
+    // NEW ENDPOINT: Add a new route to securely provide the JWT token to the frontend
+    // This endpoint allows the frontend to get the JWT token for Salesforce chat
+    // without exposing it in the URL or localStorage
+    app.get('/auth/chat-token', (req, res) => {
+        // NEW CODE: Detailed logging to track token requests
+        // Helps troubleshoot issues with token retrieval
+        console.log('Chat token request:', {
+            sessionID: req.sessionID,
+            isAuthenticated: !!req.session?.isAuthenticated,
+            hasToken: !!req.session?.salesforceJwt
+        });
+        
+        // NEW CODE: Security check to ensure only authenticated users can get the token
+        // This prevents unauthorized access to the JWT token
+        if (!req.session?.isAuthenticated) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+        
+        // NEW CODE: Return only the JWT token needed for Salesforce
+        // The frontend can use this to initialize the Salesforce chat with a verified user
+        res.json({
+            token: req.session.salesforceJwt || null
+        });
     });
 
     app.get('/auth/logout', (req, res) => {
