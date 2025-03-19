@@ -81,6 +81,29 @@ const createApp = async () => {
     });
 
     // Routes
+    app.get('/config', (req, res) => {
+        console.log('Config endpoint hit');
+        res.json({
+            oktaIssuer: process.env.OKTA_ISSUER_URL,
+            clientId: process.env.OKTA_CLIENT_ID,
+            redirectUri: process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback',
+            isAuthenticated: !!req.session?.isAuthenticated
+        });
+    });
+
+    app.get('/auth/status', (req, res) => {
+        console.log('Auth status check:', {
+            sessionID: req.sessionID,
+            isAuthenticated: !!req.session?.isAuthenticated,
+            user: req.session?.user
+        });
+        
+        res.json({
+            isAuthenticated: !!req.session?.isAuthenticated,
+            user: req.session?.user || null
+        });
+    });
+
     app.post('/auth/pkce', async (req, res) => {
         try {
             const { code_verifier, state } = req.body;
@@ -88,30 +111,31 @@ const createApp = async () => {
                 return res.status(400).json({ error: 'Missing PKCE parameters' });
             }
 
-            // Set session data
             req.session.codeVerifier = code_verifier;
             req.session.state = state;
             
-            // Save session and respond immediately
-            req.session.save((err) => {
-                if (err) {
-                    console.error('Failed to save session:', err);
-                    res.status(500).json({ error: 'Failed to save PKCE data' });
-                } else {
-                    console.log('Session saved:', {
-                        sessionId: req.sessionID,
-                        hasCodeVerifier: true
-                    });
-                    res.json({ success: true });
-                }
+            await new Promise((resolve, reject) => {
+                req.session.save((err) => {
+                    if (err) {
+                        console.error('Failed to save session:', err);
+                        reject(err);
+                    } else {
+                        console.log('Session saved:', {
+                            sessionId: req.sessionID,
+                            hasCodeVerifier: true
+                        });
+                        resolve();
+                    }
+                });
             });
+
+            res.json({ success: true });
         } catch (error) {
             console.error('Error saving PKCE data:', error);
             res.status(500).json({ error: 'Failed to save PKCE data' });
         }
     });
 
-    // Update callback route to use PKCE
     app.get('/callback', async (req, res) => {
         try {
             console.log('=== /callback route hit ===');
@@ -198,27 +222,9 @@ const createApp = async () => {
         }
     });
 
-    // Auth status endpoint
-    app.get('/auth/status', (req, res) => {
-        console.log('Auth status check:', {
-            sessionID: req.sessionID,
-            session: req.session
-        });
-        
-        res.json({
-            isAuthenticated: !!req.session?.isAuthenticated,
-            user: req.session?.user || null
-        });
-    });
-
-    // Config endpoint
-    app.get('/config', (req, res) => {
-        console.log('Config endpoint hit');
-        res.json({
-            oktaIssuer: process.env.OKTA_ISSUER_URL,
-            clientId: process.env.OKTA_CLIENT_ID,
-            redirectUri: process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback',
-            isAuthenticated: !!req.session?.isAuthenticated
+    app.get('/auth/logout', (req, res) => {
+        req.session.destroy(() => {
+            res.redirect('/');
         });
     });
 
