@@ -80,17 +80,7 @@ const createApp = async () => {
         next();
     });
 
-    // Routes
-    app.get('/config', (req, res) => {
-        console.log('Config endpoint hit');
-        res.json({
-            oktaIssuer: process.env.OKTA_ISSUER_URL,
-            clientId: process.env.OKTA_CLIENT_ID,
-            redirectUri: process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback',
-            isAuthenticated: !!req.session?.isAuthenticated
-        });
-    });
-
+    // API Routes first
     app.get('/auth/status', (req, res) => {
         console.log('Auth status check:', {
             sessionID: req.sessionID,
@@ -104,6 +94,17 @@ const createApp = async () => {
         });
     });
 
+    app.get('/config', (req, res) => {
+        console.log('Config endpoint hit');
+        res.json({
+            oktaIssuer: process.env.OKTA_ISSUER_URL,
+            clientId: process.env.OKTA_CLIENT_ID,
+            redirectUri: process.env.CALLBACK_URL || 'https://vickers-demo-site-d3334f441edc.herokuapp.com/callback',
+            isAuthenticated: !!req.session?.isAuthenticated
+        });
+    });
+
+    // Auth routes
     app.post('/auth/pkce', async (req, res) => {
         try {
             const { code_verifier, state } = req.body;
@@ -215,7 +216,7 @@ const createApp = async () => {
                 });
             });
 
-            res.redirect('/?auth=success');
+            res.redirect('/auth/success');
         } catch (error) {
             console.error('Callback error:', error);
             res.redirect('/?error=' + encodeURIComponent(error.message));
@@ -228,11 +229,32 @@ const createApp = async () => {
         });
     });
 
-    // Static file serving
+    // Add specific route for auth success
+    app.get('/auth/success', (req, res) => {
+        res.json({
+            isAuthenticated: !!req.session?.isAuthenticated,
+            user: req.session?.user || null
+        });
+    });
+
+    // Static file serving AFTER API routes
     app.use(express.static('public'));
 
-    // Root route
+    // Root and catch-all routes LAST
     app.get('/', (req, res) => {
+        // Check if this is an auth success redirect
+        if (req.query.auth === 'success') {
+            return res.json({
+                isAuthenticated: !!req.session?.isAuthenticated,
+                user: req.session?.user || null
+            });
+        }
+        // Otherwise serve the index.html
+        res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    });
+
+    // Optional catch-all route
+    app.get('*', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
