@@ -213,7 +213,7 @@ const createApp = async () => {
                 });
             });
 
-            // After successful authentication, redirect to home
+            // Keep the redirect to /?auth=success
             res.redirect('/?auth=success');
         } catch (error) {
             console.error('Callback error:', error);
@@ -240,14 +240,6 @@ const createApp = async () => {
 
     // Root and catch-all routes LAST
     app.get('/', (req, res) => {
-        // Check if this is an auth success redirect
-        if (req.query.auth === 'success') {
-            return res.json({
-                isAuthenticated: !!req.session?.isAuthenticated,
-                user: req.session?.user || null
-            });
-        }
-        // Otherwise serve the index.html
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 

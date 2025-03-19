@@ -202,30 +202,37 @@ async function initializeAuth() {
     }
 }
 
-// Add this function to handle the auth success redirect
-async function handleAuthSuccess() {
-    try {
-        const response = await fetch('/auth/status');
-        const status = await response.json();
-        
-        if (status.isAuthenticated && status.user) {
-            // Redirect to home page with the auth status
-            window.location.href = '/';
-            // After redirect, checkAuthStatus will update the UI
-        }
-    } catch (error) {
-        console.error('Error handling auth success:', error);
-    }
-}
-
 // Update the initialization code
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('Page loaded, initializing auth...');
-    initializeAuth();
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('Page loaded, checking URL parameters...');
+    
+    // Check if we're returning from auth
+    if (window.location.search.includes('auth=success')) {
+        console.log('Auth success detected, fetching user info...');
+        try {
+            const response = await fetch('/auth/status');
+            const status = await response.json();
+            
+            // Store auth status in sessionStorage
+            sessionStorage.setItem('authStatus', JSON.stringify(status));
+            
+            // Redirect to home page without the auth parameter
+            window.location.replace('/');
+            return;
+        } catch (error) {
+            console.error('Error fetching auth status:', error);
+        }
+    } else {
+        // Check if we have stored auth status
+        const storedStatus = sessionStorage.getItem('authStatus');
+        if (storedStatus) {
+            console.log('Found stored auth status');
+            const status = JSON.parse(storedStatus);
+            updateUI(status.isAuthenticated, status.user);
+            sessionStorage.removeItem('authStatus'); // Clear it after use
+        }
+        
+        // Initialize auth
+        initializeAuth();
+    }
 });
-
-// Check auth status after successful login
-if (window.location.search.includes('auth=success')) {
-    console.log('Auth success detected, checking status');
-    checkAuthStatus();
-}
