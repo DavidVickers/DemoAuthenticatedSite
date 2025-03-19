@@ -196,30 +196,31 @@ async function initializeAuth() {
     }
 }
 
-// Update DOMContentLoaded event listener
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('Page loaded, initializing auth...');
-    
-    // Initialize auth first
-    initializeAuth().then(() => {
-        console.log('Auth initialized, setting up event listeners');
+// Add this function to handle the auth success redirect
+async function handleAuthSuccess() {
+    try {
+        const response = await fetch('/auth/status');
+        const status = await response.json();
         
-        // Add login button click handler
-        const loginButton = document.getElementById('login-button');
-        if (loginButton) {
-            loginButton.addEventListener('click', login);
-            console.log('Login button handler attached');
+        if (status.isAuthenticated && status.user) {
+            // Redirect to home page with the auth status
+            window.location.href = '/';
+            // After redirect, checkAuthStatus will update the UI
         }
+    } catch (error) {
+        console.error('Error handling auth success:', error);
+    }
+}
 
-        // Add logout button click handler
-        const logoutButton = document.getElementById('logout-button');
-        if (logoutButton) {
-            logoutButton.addEventListener('click', logout);
-            console.log('Logout button handler attached');
-        }
-    }).catch(error => {
-        console.error('Failed to initialize auth:', error);
-    });
+// Update the initialization code
+document.addEventListener('DOMContentLoaded', () => {
+    // Check if we're on the /auth/success page
+    if (window.location.pathname === '/auth/success') {
+        handleAuthSuccess();
+    } else {
+        // Normal initialization
+        initializeAuth();
+    }
 });
 
 // Add event listener for successful auth
