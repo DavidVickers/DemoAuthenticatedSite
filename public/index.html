@@ -103,7 +103,9 @@
       }
     };
   </script>
-  <script type='text/javascript' src='https://coralcloudresort-cd.my.site.com/ESWExternalSite1742408330641/assets/js/bootstrap.min.js' onload='initEmbeddedMessaging()'></script>
+  <script type='text/javascript' 
+    src='https://coralcloudresort-cd.my.site.com/ESWExternalSite1742408330641/assets/js/bootstrap.min.js'>
+  </script>
   <script>
     // Listen for the event that tells us the embedded messaging client is ready
     window.addEventListener("onEmbeddedMessagingReady", async () => {
@@ -160,17 +162,17 @@
         }
       } catch (error) {
         console.error("Error refreshing the identity token:", error);
-        // If you can’t refresh, clear the session
+        // If you can't refresh, clear the session
         embeddedservice_bootstrap.userVerificationAPI.clearSession(true);
       }
     });
   
     // Example: When your user logs out
-    // 1. Call your server’s logout endpoint
+    // 1. Call your server's logout endpoint
     // 2. Also clear the embedded messaging session so the user is no longer verified
     async function onUserLogout() {
       try {
-        await fetch('/auth/logout');  // ends user’s session on your server
+        await fetch('/auth/logout');  // ends user's session on your server
         await embeddedservice_bootstrap.userVerificationAPI.clearSession(true);
         console.log("User has logged out and chat session cleared.");
         // Now the user is fully logged out (both app session and chat session)
