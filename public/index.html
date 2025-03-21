@@ -104,5 +104,82 @@
     };
   </script>
   <script type='text/javascript' src='https://coralcloudresort-cd.my.site.com/ESWExternalSite1742408330641/assets/js/bootstrap.min.js' onload='initEmbeddedMessaging()'></script>
+  <script>
+    // Listen for the event that tells us the embedded messaging client is ready
+    window.addEventListener("onEmbeddedMessagingReady", async () => {
+      console.log("Received the onEmbeddedMessagingReady event.");
+  
+      try {
+        // 1. Fetch the ID token from your server
+        const response = await fetch('/auth/chat-token', { credentials: 'include' });
+        if (!response.ok) {
+          throw new Error('Failed to fetch chat token from server');
+        }
+        const data = await response.json();
+  
+        // 2. If a token is present, pass it to Salesforce
+        if (data.token) {
+          embeddedservice_bootstrap.userVerificationAPI.setIdentityToken({
+            identityTokenType: "JWT", // Must be "JWT" for Salesforce
+            identityToken: data.token
+          });
+          console.log("Identity token successfully set in Salesforce.");
+        } else {
+          console.warn("No token found in /auth/chat-token response.");
+        }
+      } catch (error) {
+        console.error("Error retrieving or setting the identity token:", error);
+      }
+    });
+  
+    // Listen for token expiration events
+    window.addEventListener("onEmbeddedMessagingIdentityTokenExpired", async () => {
+      console.log("Received the onEmbeddedMessagingIdentityTokenExpired event.");
+  
+      try {
+        // 1. Attempt to fetch a fresh token from your server
+        const response = await fetch('/auth/chat-token', { credentials: 'include' });
+        if (!response.ok) {
+          throw new Error('Failed to refresh chat token from server');
+        }
+        const data = await response.json();
+  
+        // 2. If still authenticated, set the new token
+        if (data.token) {
+          embeddedservice_bootstrap.userVerificationAPI.setIdentityToken({
+            identityTokenType: "JWT",
+            identityToken: data.token
+          });
+          console.log("Refreshed identity token was set in Salesforce.");
+        } else {
+          // If you can't get a valid token, you can either:
+          // (a) force the user to log in again or
+          // (b) clear the session in the embedded client
+          console.warn("No token returned. Clearing session in embedded chat.");
+          embeddedservice_bootstrap.userVerificationAPI.clearSession(true);
+        }
+      } catch (error) {
+        console.error("Error refreshing the identity token:", error);
+        // If you can’t refresh, clear the session
+        embeddedservice_bootstrap.userVerificationAPI.clearSession(true);
+      }
+    });
+  
+    // Example: When your user logs out
+    // 1. Call your server’s logout endpoint
+    // 2. Also clear the embedded messaging session so the user is no longer verified
+    async function onUserLogout() {
+      try {
+        await fetch('/auth/logout');  // ends user’s session on your server
+        await embeddedservice_bootstrap.userVerificationAPI.clearSession(true);
+        console.log("User has logged out and chat session cleared.");
+        // Now the user is fully logged out (both app session and chat session)
+      } catch (error) {
+        console.error("Error logging out or clearing embedded session:", error);
+      }
+    }
+  </script>
+
+
 </body>
 </html>
