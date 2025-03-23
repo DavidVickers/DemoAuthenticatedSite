@@ -32,11 +32,13 @@ Before you begin, ensure you have:
    - Configure the following settings:
      - Login redirect URIs: `https://your-app-name.herokuapp.com/auth/callback`
      - Logout redirect URIs: `https://your-app-name.herokuapp.com`
+   - In the Application settings, select "Public key / Private key" as the authentication method
+   - Upload your public key or use Okta's UI to generate a key pair
 
-2. Note down the following credentials:
+2. Note down the following:
    - Client ID
-   - Client Secret
-   - Okta Domain
+   - Your private key (save it securely)
+   - Okta Domain/Issuer URL
 
 ### Salesforce Setup
 
@@ -65,9 +67,11 @@ heroku create your-app-name
 3. Set up environment variables in Heroku:
 ```bash
 heroku config:set OKTA_CLIENT_ID=your_client_id
-heroku config:set OKTA_CLIENT_SECRET=your_client_secret
 heroku config:set OKTA_ISSUER=https://your-okta-domain/oauth2/default
 heroku config:set OKTA_REDIRECT_URI=https://your-app-name.herokuapp.com/auth/callback
+heroku config:set PRIVATE_KEY="-----BEGIN PRIVATE KEY-----
+YOUR_PRIVATE_KEY_HERE
+-----END PRIVATE KEY-----"
 ```
 
 ### Deployment Steps
@@ -97,9 +101,11 @@ npm install
 2. Create a `.env` file with your configuration:
 ```env
 OKTA_CLIENT_ID=your_client_id
-OKTA_CLIENT_SECRET=your_client_secret
 OKTA_ISSUER=https://your-okta-domain/oauth2/default
 OKTA_REDIRECT_URI=http://localhost:3000/auth/callback
+PRIVATE_KEY="-----BEGIN PRIVATE KEY-----
+YOUR_PRIVATE_KEY_HERE
+-----END PRIVATE KEY-----"
 ```
 
 3. Start the development server:
@@ -108,3 +114,11 @@ npm start
 ```
 
 ## Project Structure 
+
+## Security Features
+
+- Public/Private Key Authentication
+- JWT Token Signing
+- Secure Session Management
+- HTTPS Enforcement
+- User Verification for Chat 
