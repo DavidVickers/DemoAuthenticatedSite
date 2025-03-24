@@ -57,11 +57,33 @@ function generateSessionId() {
 
 // Logout function: sends the user to the logout endpoint on the server
 async function logout() {
-  try {
-    window.location.href = '/auth/logout';
-  } catch (error) {
-    console.error('Logout error:', error);
-  }
+    try {
+        // Clear chat session first and wait for it to complete
+        if (window.embeddedservice_bootstrap?.userVerificationAPI) {
+            await embeddedservice_bootstrap.userVerificationAPI
+                .clearSession(true)
+                .then(() => {
+                    console.log('Chat session cleared successfully');
+                    // Remove any remaining chat elements
+                    const chatElements = document.querySelectorAll('[data-embeddedservice-chatbutton]');
+                    chatElements.forEach(element => element.remove());
+                })
+                .catch((error) => {
+                    console.error('Error clearing chat session:', error);
+                })
+                .finally(() => {
+                    // Always proceed with logout even if chat cleanup fails
+                    window.location.href = '/auth/logout';
+                });
+        } else {
+            // If no chat API exists, proceed with normal logout
+            window.location.href = '/auth/logout';
+        }
+    } catch (error) {
+        console.error('Error during logout:', error);
+        // Ensure logout happens even if entire process fails
+        window.location.href = '/auth/logout';
+    }
 }
 
 // Optional: function to manually check authentication state (if needed)
