@@ -4,7 +4,7 @@ A secure demo application that integrates Salesforce Embedded Messaging with Okt
 
 <h2 align="center">The Authetication flow to be achieved</h2>
 
-![Authentication Flow](./READMEimages/User%20verification%20flow-2025-03-24-130524.png)
+![Authentication Flow](../ImageFiles/UserVerificationFlow.png)
 
 # Features
 

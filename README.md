@@ -38,3 +38,5 @@ project/
 
 ## License
 MIT License - See LICENSE file for details.
+
+![Authentication Flow](./READMEimages/UserVerificationFlow.png)
