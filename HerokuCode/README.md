@@ -115,7 +115,7 @@ Before you begin, ensure you have:
 * Node.js installed (v18.x recommended)
 * Heroku CLI installed
 * A Salesforce org with Embedded Service Chat configured
-* An Okta Developer Account (free tier available at developer.okta.com)
+* An Okta Trial Account (okta.com)
 * Git installed on your computer
 * Successfully created a basic Embedded Service Messaging deployment in Salesforce
 * Tested the messaging on your website without authentication enabled
