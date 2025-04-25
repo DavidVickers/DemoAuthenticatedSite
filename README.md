@@ -25,7 +25,7 @@ project/
 - Enhanced chat timeout functionality
 - Case management automation
 - Custom Apex classes
-- For configuration and development details, see [Salesforce README](Salesforce Org/demo site/README.md)
+- For configuration and development details, see [Salesforce README](Salesforce%20Org/demo%20site/README.md)
 
 ## Branch Management
 - `main`: Contains both Heroku and Salesforce code
