@@ -19,7 +19,7 @@ project/
 - Live demo site with Okta authentication
 - Salesforce embedded chat integration
 - Session management
-- For setup and deployment instructions, see [Heroku README](heroku/README.md)
+- For setup and deployment instructions, see [Heroku README](HerokuCode/README.md)
 
 ### Salesforce Development
 - Enhanced chat timeout functionality
